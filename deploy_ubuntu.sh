@@ -36,7 +36,7 @@ if [ ! -f "backend/.env" ]; then
     cp backend/.env.example backend/.env
     # Génération d'un secret aléatoire
     SECRET=$(openssl rand -base64 32)
-    sed -i "s/SECRET_KEY=.*/SECRET_KEY=$SECRET/" backend/.env
+    sed -i "s|SECRET_KEY=.*|SECRET_KEY=$SECRET|" backend/.env
     echo "✅ Fichier .env créé avec une nouvelle SECRET_KEY."
 fi
 
