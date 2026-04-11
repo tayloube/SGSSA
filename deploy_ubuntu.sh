@@ -34,10 +34,12 @@ fi
 echo "⚙️ Configuration de l'environnement..."
 if [ ! -f "backend/.env" ]; then
     cp backend/.env.example backend/.env
-    # Génération d'un secret aléatoire
+    # Génération de secrets aléatoires
     SECRET=$(openssl rand -base64 32)
+    DB_PASS=$(openssl rand -base64 24)
     sed -i "s|SECRET_KEY=.*|SECRET_KEY=$SECRET|" backend/.env
-    echo "✅ Fichier .env créé avec une nouvelle SECRET_KEY."
+    sed -i "s|DB_PASSWORD=.*|DB_PASSWORD=$DB_PASS|" backend/.env
+    echo "✅ Fichier .env créé avec des secrets sécurisés."
 fi
 
 # 5. Lancement des conteneurs
