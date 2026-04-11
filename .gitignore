@@ -48,3 +48,5 @@ dist/
 *.sw?
 .DS_Store
 Thumbs.db
+db.sqlite3
+*.sqlite3
