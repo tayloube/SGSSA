@@ -1,0 +1,3 @@
+-- Schéma initial pour la base de données SGSSA
+-- La structure réelle est gérée par les migrations Django
+-- Ce fichier est utilisé par le conteneur Postgres lors du premier démarrage.
