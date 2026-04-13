@@ -11,7 +11,7 @@ RUN npm install
 COPY . .
 
 # Construire l'application Next.js
-ENV NEXT_PUBLIC_API_URL http://localhost/api
+ENV NEXT_PUBLIC_API_URL ""
 RUN npm run build
 
 # Étape 2 : Exécution
