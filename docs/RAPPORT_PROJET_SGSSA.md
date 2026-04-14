@@ -144,4 +144,3 @@ sequenceDiagram
 
 **Signature** :  
 *Ahmed Taleb Tolba*  
-*Expert Infrastructure & Développement*
