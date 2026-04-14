@@ -210,21 +210,21 @@ export default function ServersPage() {
                         {server.cpu_coeurs} cœurs
                       </div>
                       {server.derniere_metrique && (
-                        <MetricMini value={server.derniere_metrique.cpu} color="#3b82f6" />
+                        <MetricMini value={server.derniere_metrique.cpu_usage} color="#3b82f6" />
                       )}
                     </td>
                     <td style={{ fontSize: 12, color: '#94a3b8' }}>
                       {server.ram_go} Go
                       {server.derniere_metrique && (
-                        <MetricMini value={server.derniere_metrique.ram} color="#6366f1" />
+                        <MetricMini value={server.derniere_metrique.ram_usage} color="#6366f1" />
                       )}
                     </td>
                     <td style={{ fontSize: 12, color: '#64748b' }}>{server.rack_nom || '—'}</td>
                     <td>
                       {liveMetrics[server.id] || server.derniere_metrique ? (
                         <div style={{ fontSize: 11, color: '#64748b' }}>
-                          CPU: <span style={{ color: '#f1f5f9' }}>{(liveMetrics[server.id]?.cpu ?? server.derniere_metrique?.cpu ?? 0).toFixed(0)}%</span>
-                          {' '}RAM: <span style={{ color: '#f1f5f9' }}>{(liveMetrics[server.id]?.ram ?? server.derniere_metrique?.ram ?? 0).toFixed(0)}%</span>
+                          CPU: <span style={{ color: '#f1f5f9' }}>{(liveMetrics[server.id]?.cpu ?? server.derniere_metrique?.cpu_usage ?? 0).toFixed(0)}%</span>
+                          {' '}RAM: <span style={{ color: '#f1f5f9' }}>{(liveMetrics[server.id]?.ram ?? server.derniere_metrique?.ram_usage ?? 0).toFixed(0)}%</span>
                         </div>
                       ) : (
                         <span style={{ fontSize: 11, color: '#475569' }}>—</span>
@@ -413,8 +413,9 @@ function ServerDetailModal({ server, liveData, onClose }: {
   const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
   
   // Fusionner les données statiques (DB) et live (WebSocket)
-  const currentCPU = liveData?.cpu ?? server.derniere_metrique?.cpu ?? 0;
-  const currentRAM = liveData?.ram ?? server.derniere_metrique?.ram ?? 0;
+  const currentCPU = liveData?.cpu ?? server.derniere_metrique?.cpu_usage ?? 0;
+  const currentRAM = liveData?.ram ?? server.derniere_metrique?.ram_usage ?? 0;
+  const currentDisk = liveData?.disk ?? server.derniere_metrique?.disk_usage ?? 0;
   const currentTemp = liveData?.temp ?? server.derniere_metrique?.cpu_temp ?? 0;
   const currentSnapshot = liveData?.snapshot || (server.dernier_snapshot?.image);
   const snapshotTime = liveData?.snapshot ? new Date().toISOString() : server.dernier_snapshot?.timestamp;
@@ -453,6 +454,7 @@ function ServerDetailModal({ server, liveData, onClose }: {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <MetricDisplay label="Utilisation CPU" value={currentCPU} color="#3b82f6" />
               <MetricDisplay label="RAM occupée" value={currentRAM} color="#6366f1" />
+              <MetricDisplay label="Disque utilisé" value={currentDisk} color="#10b981" />
               <MetricDisplay label="Température CPU" value={currentTemp} color="#f59e0b" suffix="°C" max={100} />
             </div>
             

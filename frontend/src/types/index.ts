@@ -79,8 +79,8 @@ export interface Server {
   derniere_metrique?: {
     cpu: number;
     ram: number;
-    disk: number;
-    temp?: number;
+    disk_usage: number;
+    cpu_temp?: number;
     timestamp: string;
   };
   dernier_snapshot?: {
