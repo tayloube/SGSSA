@@ -26,7 +26,9 @@ export default function ServersPage() {
   const [showModal, setShowModal]       = useState(false);
   const [editServer, setEditServer]     = useState<Server | null>(null);
   const [detailServer, setDetailServer] = useState<Server | null>(null);
-  const [liveMetrics, setLiveMetrics]   = useState<Record<number, { cpu: number; ram: number; disk: number }>>({});
+  const [liveMetrics, setLiveMetrics]   = useState<Record<number, { cpu: number; ram: number; disk: number; temp?: number; snapshot?: string }>>({});
+  const [wsConnected, setWsConnected] = useState(false);
+  const wsRef = useRef<WebSocket | null>(null);
 
   const fetchServers = useCallback(async () => {
     try {
@@ -43,6 +45,51 @@ export default function ServersPage() {
   useEffect(() => { fetchServers(); }, [fetchServers]);
   useEffect(() => {
     racksAPI.list().then(d => setRacks(d.results)).catch(() => {});
+  }, []);
+
+  // Connexion WebSocket
+  useEffect(() => {
+    const token = document.cookie.split('; ').find(r => r.startsWith('access_token='))?.split('=')[1];
+    if (!token) return;
+
+    const ws = new WebSocket(`${WS_URL}/ws/dashboard/?token=${token}`);
+    wsRef.current = ws;
+
+    ws.onopen = () => setWsConnected(true);
+    ws.onclose = () => setWsConnected(false);
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === 'metric') {
+        setLiveMetrics(prev => ({
+          ...prev,
+          [data.server_id]: {
+            cpu: data.cpu,
+            ram: data.ram,
+            disk: data.disk,
+            temp: data.temp,
+          }
+        }));
+      } else if (data.type === 'status') {
+        // Mise à jour du statut dans la liste des serveurs
+        setServers(prev => prev.map(s => 
+          s.id === data.server_id ? { ...s, statut: data.statut } : s
+        ));
+        toast(
+          `Serveur "${data.nom}" est maintenant ${data.statut === 'actif' ? 'en ligne' : 'hors ligne'}`,
+          { icon: data.statut === 'actif' ? '🟢' : '🔴', duration: 4000 }
+        );
+      } else if (data.type === 'snapshot') {
+        setLiveMetrics(prev => ({
+          ...prev,
+          [data.server_id]: {
+            ...(prev[data.server_id] || { cpu: 0, ram: 0, disk: 0 }),
+            snapshot: data.image_url
+          }
+        }));
+      }
+    };
+
+    return () => ws.close();
   }, []);
 
   const handleDelete = async (id: number, nom: string) => {
@@ -174,10 +221,10 @@ export default function ServersPage() {
                     </td>
                     <td style={{ fontSize: 12, color: '#64748b' }}>{server.rack_nom || '—'}</td>
                     <td>
-                      {server.derniere_metrique ? (
+                      {liveMetrics[server.id] || server.derniere_metrique ? (
                         <div style={{ fontSize: 11, color: '#64748b' }}>
-                          CPU: <span style={{ color: '#f1f5f9' }}>{server.derniere_metrique.cpu.toFixed(0)}%</span>
-                          {' '}RAM: <span style={{ color: '#f1f5f9' }}>{server.derniere_metrique.ram.toFixed(0)}%</span>
+                          CPU: <span style={{ color: '#f1f5f9' }}>{(liveMetrics[server.id]?.cpu ?? server.derniere_metrique?.cpu ?? 0).toFixed(0)}%</span>
+                          {' '}RAM: <span style={{ color: '#f1f5f9' }}>{(liveMetrics[server.id]?.ram ?? server.derniere_metrique?.ram ?? 0).toFixed(0)}%</span>
                         </div>
                       ) : (
                         <span style={{ fontSize: 11, color: '#475569' }}>—</span>
@@ -218,6 +265,7 @@ export default function ServersPage() {
       {detailServer && (
         <ServerDetailModal
           server={detailServer}
+          liveData={liveMetrics[detailServer.id]}
           onClose={() => setDetailServer(null)}
         />
       )}
@@ -357,39 +405,113 @@ function ServerModal({ server, racks, onClose, onSaved }: {
   );
 }
 
-function ServerDetailModal({ server, onClose }: { server: Server; onClose: () => void }) {
+function ServerDetailModal({ server, liveData, onClose }: { 
+  server: Server; 
+  liveData?: { cpu: number; ram: number; disk: number; temp?: number; snapshot?: string };
+  onClose: () => void 
+}) {
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+  
+  // Fusionner les données statiques (DB) et live (WebSocket)
+  const currentCPU = liveData?.cpu ?? server.derniere_metrique?.cpu ?? 0;
+  const currentRAM = liveData?.ram ?? server.derniere_metrique?.ram ?? 0;
+  const currentTemp = liveData?.temp ?? server.derniere_metrique?.cpu_temp ?? 0;
+  const currentSnapshot = liveData?.snapshot || (server.dernier_snapshot?.image);
+  const snapshotTime = liveData?.snapshot ? new Date().toISOString() : server.dernier_snapshot?.timestamp;
+  
   return (
     <div className="modal-overlay">
-      <div className="modal-box" style={{ maxWidth: 680 }}>
+      <div className="modal-box" style={{ maxWidth: 800 }}>
         <div className="modal-header">
-          <h2 style={{ fontSize: 16, fontWeight: 600 }}>{server.nom}</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div className={`live-dot ${server.statut === 'actif' ? 'live-dot-green' : 'live-dot-red'}`} />
+            <h2 style={{ fontSize: 18, fontWeight: 700 }}>{server.nom}</h2>
+          </div>
           <button onClick={onClose} className="btn btn-ghost btn-icon"><span style={{ fontSize: 18 }}>×</span></button>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          {[
-            { label: 'Adresse IP', value: server.adresse_ip },
-            { label: 'Statut', value: server.statut },
-            { label: 'Type', value: TYPE_LABELS[server.type] },
-            { label: 'Système d\'exploitation', value: server.systeme_exploitation },
-            { label: 'CPU', value: `${server.cpu_coeurs} cœurs` },
-            { label: 'RAM', value: `${server.ram_go} Go` },
-            { label: 'Stockage', value: `${server.stockage_go} Go` },
-            { label: 'Rack', value: server.rack_nom || '—' },
-            { label: 'Applications', value: `${server.apps_count}` },
-            { label: 'Logiciels', value: `${server.logiciels_count}` },
-          ].map(item => (
-            <div key={item.label}>
-              <div style={{ fontSize: 11, color: '#64748b', fontWeight: 500, textTransform: 'uppercase', letterSpacing:'0.04em', marginBottom: 4 }}>{item.label}</div>
-              <div style={{ fontSize: 14, color: '#f1f5f9', fontWeight: 500 }}>{item.value}</div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 24 }}>
+          {/* Colonne Gauche: Infos & Métriques */}
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+              {[
+                { label: 'Adresse IP', value: server.adresse_ip },
+                { label: 'Système', value: server.systeme_exploitation },
+                { label: 'Hardware', value: `${server.cpu_coeurs} cœurs / ${server.ram_go} Go` },
+                { label: 'Rack', value: server.rack_nom || '—' },
+              ].map(item => (
+                <div key={item.label}>
+                  <div style={{ fontSize: 10, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>{item.label}</div>
+                  <div style={{ fontSize: 13, color: '#f1f5f9' }}>{item.value}</div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-        {server.description && (
-          <div style={{ marginTop: 16, padding: 12, background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}>
-            <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>DESCRIPTION</div>
-            <p style={{ fontSize: 13, color: '#94a3b8' }}>{server.description}</p>
+
+            <h3 style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Activity size={14} /> Métriques Temps Réel
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <MetricDisplay label="Utilisation CPU" value={currentCPU} color="#3b82f6" />
+              <MetricDisplay label="RAM occupée" value={currentRAM} color="#6366f1" />
+              <MetricDisplay label="Température CPU" value={currentTemp} color="#f59e0b" suffix="°C" max={100} />
+            </div>
+            
+            {server.description && (
+              <div style={{ marginTop: 24, padding: 12, background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}>
+                <div style={{ fontSize: 10, color: '#64748b', marginBottom: 6 }}>DESCRIPTION</div>
+                <p style={{ fontSize: 12, color: '#94a3b8' }}>{server.description}</p>
+              </div>
+            )}
           </div>
-        )}
+
+          {/* Colonne Droite: Surveillance Caméra */}
+          <div style={{ borderLeft: '1px solid rgba(255,255,255,0.05)', paddingLeft: 24 }}>
+            <h3 style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Eye size={14} /> Surveillance Caméra
+            </h3>
+            {currentSnapshot ? (
+              <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)', background: '#0f172a' }}>
+                <img 
+                  key={currentSnapshot} // Force re-render on new image
+                  src={currentSnapshot.startsWith('http') ? currentSnapshot : `${API_URL}${currentSnapshot}`} 
+                  alt="Snapshot" 
+                  style={{ width: '100%', display: 'block' }} 
+                />
+                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: 8, background: 'linear-gradient(transparent, rgba(0,0,0,0.8))', color: 'white', fontSize: 10, display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Live Feed</span>
+                  <span>{snapshotTime ? new Date(snapshotTime).toLocaleTimeString() : '--:--'}</span>
+                </div>
+              </div>
+            ) : (
+              <div style={{ 
+                height: 180, borderRadius: 12, border: '2px dashed rgba(255,255,255,0.05)', 
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8,
+                color: '#475569'
+              }}>
+                <WifiOff size={24} />
+                <span style={{ fontSize: 12 }}>Aucun flux vidéo</span>
+              </div>
+            )}
+            <p style={{ marginTop: 12, fontSize: 11, color: '#64748b', lineHeight: 1.4 }}>
+              L'agent distant prend une capture d'écran toutes les 5 minutes.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MetricDisplay({ label, value, color, suffix = '%', max = 100 }: { label: string; value: number; color: string; suffix?: string; max?: number }) {
+  const percent = Math.min(100, (value / max) * 100);
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+        <span style={{ fontSize: 12, color: '#94a3b8' }}>{label}</span>
+        <span style={{ fontSize: 12, fontWeight: 600, color: value > 80 ? '#ef4444' : '#f1f5f9' }}>{value.toFixed(1)}{suffix}</span>
+      </div>
+      <div className="metric-bar" style={{ height: 6 }}>
+        <div className="metric-bar-fill" style={{ width: `${percent}%`, background: value > 80 ? '#ef4444' : color }} />
       </div>
     </div>
   );

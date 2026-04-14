@@ -48,3 +48,6 @@ dist/
 Thumbs.db
 db.sqlite3
 *.sqlite3
+media/
+redis_temp/
+*.rdb

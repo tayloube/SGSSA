@@ -36,7 +36,16 @@ class ServerMetric(models.Model):
     cpu_usage = models.FloatField()
     ram_usage = models.FloatField()
     disk_usage = models.FloatField()
+    cpu_temp = models.FloatField(null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
     
+    class Meta:
+        ordering = ['-timestamp']
+
+class ServerSnapshot(models.Model):
+    server = models.ForeignKey(Server, related_name='snapshots', on_delete=models.CASCADE)
+    image = models.ImageField(upload_to='server_snapshots/')
+    timestamp = models.DateTimeField(auto_now_add=True)
+
     class Meta:
         ordering = ['-timestamp']

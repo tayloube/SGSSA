@@ -17,8 +17,16 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import toast from 'react-hot-toast';
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000';
+const getWSURL = () => {
+  if (typeof window === 'undefined') return '';
+  const port = window.location.port ? `:${window.location.port}` : '';
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return process.env.NEXT_PUBLIC_WS_URL || `${protocol}//${window.location.hostname}${port}`;
+};
+
+const WS_URL = getWSURL();
 
 export default function DashboardPage() {
   const { user } = useAuth();
@@ -48,19 +56,51 @@ export default function DashboardPage() {
     const ws = new WebSocket(`${WS_URL}/ws/dashboard/?token=${token}`);
     wsRef.current = ws;
 
-    ws.onopen = () => setWsConnected(true);
+    ws.onopen = () => { setWsConnected(true); fetchStats(); };
     ws.onclose = () => setWsConnected(false);
     ws.onerror = () => setWsConnected(false);
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      if (data.type === 'stats') {
-        setLastUpdate(new Date());
-        // Mise à jour partielle des stats en temps réel
+      setLastUpdate(new Date());
+
+      if (data.type === 'metric') {
+        // Mise à jour des métriques moyennes en temps réel
+        setStats(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            serveurs: {
+              ...prev.serveurs,
+              metriques_moy: {
+                cpu: data.cpu,
+                ram: data.ram,
+                disk: data.disk,
+              }
+            }
+          };
+        });
+      } else if (data.type === 'status') {
+        // Mise à jour des compteurs globaux en temps réel
+        setStats(prev => {
+          if (!prev) return prev;
+          const isActif = data.statut === 'actif';
+          return {
+            ...prev,
+            serveurs: {
+              ...prev.serveurs,
+              actifs: isActif ? prev.serveurs.actifs + 1 : prev.serveurs.actifs - 1,
+              inactifs: isActif ? prev.serveurs.inactifs - 1 : prev.serveurs.inactifs + 1,
+            }
+          };
+        });
+        toast(
+          `Alerte: Serveur "${data.nom}" est ${data.statut === 'actif' ? 'en ligne' : 'hors ligne'}`,
+          { icon: data.statut === 'actif' ? '🟢' : '🔴', duration: 5000 }
+        );
+      } else if (data.type === 'stats') {
         setStats(prev => prev ? {
           ...prev,
           serveurs: { ...prev.serveurs, actifs: data.serveurs_actifs },
-          applications: { ...prev.applications, en_ligne: data.apps_en_ligne },
-          certificats: { ...prev.certificats, critiques: data.certs_critiques, expires: data.certs_expires },
         } : prev);
       }
     };

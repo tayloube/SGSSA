@@ -1,14 +1,52 @@
-from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticated
+from rest_framework import viewsets, status
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from .models import Server, ServerMetric
-from .serializers import ServerSerializer, ServerMetricSerializer
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+from .models import Server, ServerMetric, ServerSnapshot
+from .serializers import ServerSerializer, ServerMetricSerializer, ServerSnapshotSerializer
+
+from django.utils import timezone
+from datetime import timedelta
+
+channel_layer = get_channel_layer()
+
+def check_server_heartbeats():
+    """Vérifie les serveurs 'actifs' et les marque 'inactifs' s'il n'y a pas eu de métriques récentes."""
+    now = timezone.now()
+    timeout = now - timedelta(seconds=15)
+    
+    # Trouver les serveurs qui n'ont pas envoyé de métriques depuis 2 mins
+    stale_servers = Server.objects.filter(statut='actif').exclude(metrics__timestamp__gte=timeout).distinct()
+    
+    for server in stale_servers:
+        server.statut = 'inactif'
+        server.save()
+        
+        # Diffuser le changement de statut en temps réel
+        if channel_layer:
+            async_to_sync(channel_layer.group_send)(
+                'dashboard_stats',
+                {
+                    'type': 'stats_update',
+                    'data': {
+                        'type': 'status',
+                        'server_id': server.id,
+                        'statut': 'inactif',
+                        'nom': server.nom
+                    }
+                }
+            )
 
 class ServerViewSet(viewsets.ModelViewSet):
     queryset = Server.objects.all()
     serializer_class = ServerSerializer
     permission_classes = [IsAuthenticated]
+
+    def list(self, request, *args, **kwargs):
+        check_server_heartbeats() # Proactif: vérifier les timeouts à chaque chargement de liste
+        return super().list(request, *args, **kwargs)
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -26,3 +64,93 @@ class ServerViewSet(viewsets.ModelViewSet):
         metrics = server.metrics.all()[:50]
         serializer = ServerMetricSerializer(metrics, many=True)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], permission_classes=[AllowAny])
+    def report_metrics(self, request, pk=None):
+        """Action pour que l'agent distant rapporte ses métriques."""
+        server = self.get_object()
+        serializer = ServerMetricSerializer(data={
+            'server': server.id,
+            'cpu_usage': request.data.get('cpu_usage', 0),
+            'ram_usage': request.data.get('ram_usage', 0),
+            'disk_usage': request.data.get('disk_usage', 0),
+            'cpu_temp': request.data.get('cpu_temp'),
+        })
+        if serializer.is_valid():
+            metric = serializer.save()
+            
+            # Si le serveur était inactif, on le repasse en actif
+            if server.statut != 'actif':
+                server.statut = 'actif'
+                server.save()
+                if channel_layer:
+                    async_to_sync(channel_layer.group_send)(
+                        'dashboard_stats',
+                        {
+                            'type': 'stats_update',
+                            'data': {
+                                'type': 'status',
+                                'server_id': server.id,
+                                'statut': 'actif',
+                                'nom': server.nom
+                            }
+                        }
+                    )
+
+            # 🔴 Diffusion WebSocket en temps réel à tous les clients connectés
+            if channel_layer:
+                try:
+                    async_to_sync(channel_layer.group_send)(
+                        'dashboard_stats',
+                        {
+                            'type': 'stats_update',
+                            'data': {
+                                'type': 'metric',
+                                'server_id': server.id,
+                                'server_nom': server.nom,
+                                'cpu': metric.cpu_usage,
+                                'ram': metric.ram_usage,
+                                'disk': metric.disk_usage,
+                                'temp': metric.cpu_temp,
+                            }
+                        }
+                    )
+                except Exception:
+                    pass  # Ne pas bloquer si Redis est indisponible
+
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'], permission_classes=[AllowAny])
+    def upload_snapshot(self, request, pk=None):
+        """Action pour que l'agent télécharge une image de caméra."""
+        server = self.get_object()
+
+        # Garder seulement le dernier snapshot
+        server.snapshots.all().delete()
+
+        image_file = request.FILES.get('image')
+        if not image_file:
+            return Response({'error': 'Aucune image fournie'}, status=status.HTTP_400_BAD_REQUEST)
+
+        snapshot = ServerSnapshot.objects.create(server=server, image=image_file)
+        serializer = ServerSnapshotSerializer(snapshot)
+
+        # Diffuser l'URL du nouveau snapshot en temps réel
+        if channel_layer:
+            try:
+                async_to_sync(channel_layer.group_send)(
+                    'dashboard_stats',
+                    {
+                        'type': 'stats_update',
+                        'data': {
+                            'type': 'snapshot',
+                            'server_id': server.id,
+                            'image_url': serializer.data['image'],
+                        }
+                    }
+                )
+            except Exception:
+                pass
+
+        return Response(serializer.data, status=status.HTTP_201_CREATED)

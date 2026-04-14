@@ -51,6 +51,7 @@ export interface ServerMetric {
   utilisation_cpu: number;
   utilisation_ram: number;
   utilisation_disque: number;
+  cpu_temp?: number;
   uptime_secondes: number;
   uptime_formate: string;
   charge_reseau_entrant: number;
@@ -79,6 +80,12 @@ export interface Server {
     cpu: number;
     ram: number;
     disk: number;
+    temp?: number;
+    timestamp: string;
+  };
+  dernier_snapshot?: {
+    id: number;
+    image: string;
     timestamp: string;
   };
   metriques_recentes?: ServerMetric[];
