@@ -13,6 +13,7 @@ import {
   Users, LogOut, Menu, X, Bell, ChevronRight,
   Wifi, Activity
 } from 'lucide-react';
+import AlertBanner from '@/components/AlertBanner';
 
 const NAV_ITEMS = [
   { href: '/dashboard',     label: 'Tableau de bord',    icon: LayoutDashboard, section: null },
@@ -192,6 +193,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </span>
           </div>
         </header>
+
+        {/* Alertes Critiques Globales */}
+        <AlertBanner />
 
         {/* Pages */}
         <main style={{ flex: 1 }}>

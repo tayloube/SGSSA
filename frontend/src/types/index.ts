@@ -187,6 +187,12 @@ export interface DashboardStats {
     utilisateur: string;
     horodatage: string;
   }>;
+  historique_24h: {
+    time: string;
+    cpu: number;
+    ram: number;
+    disk: number;
+  }[];
   timestamp: string;
 }
 

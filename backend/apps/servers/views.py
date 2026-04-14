@@ -9,6 +9,8 @@ from .serializers import ServerSerializer, ServerMetricSerializer, ServerSnapsho
 
 from django.utils import timezone
 from datetime import timedelta
+from django.db.models.functions import TruncHour
+from django.db.models import Avg
 
 channel_layer = get_channel_layer()
 
@@ -65,6 +67,32 @@ class ServerViewSet(viewsets.ModelViewSet):
         serializer = ServerMetricSerializer(metrics, many=True)
         return Response(serializer.data)
 
+    @action(detail=True, methods=['get'])
+    def history_24h(self, request, pk=None):
+        server = self.get_object()
+        last_24h = timezone.now() - timedelta(hours=24)
+        
+        # Aggrégation par heure pour éviter de renvoyer trop de points
+        history = server.metrics.filter(
+            timestamp__gte=last_24h
+        ).annotate(
+            hour=TruncHour('timestamp')
+        ).values('hour').annotate(
+            cpu=Avg('cpu_usage'),
+            ram=Avg('ram_usage'),
+            disk=Avg('disk_usage')
+        ).order_by('hour')
+
+        # Formattage pour le frontend
+        data = [{
+            'time': item['hour'].strftime('%H:%M'),
+            'cpu': round(item['cpu'], 1),
+            'ram': round(item['ram'], 1),
+            'disk': round(item['disk'], 1)
+        } for item in history]
+        
+        return Response(data)
+
     @action(detail=True, methods=['post'], permission_classes=[AllowAny])
     def report_metrics(self, request, pk=None):
         """Action pour que l'agent distant rapporte ses métriques."""
@@ -100,6 +128,7 @@ class ServerViewSet(viewsets.ModelViewSet):
             # 🔴 Diffusion WebSocket en temps réel à tous les clients connectés
             if channel_layer:
                 try:
+                    # Envoi des métriques standard
                     async_to_sync(channel_layer.group_send)(
                         'dashboard_stats',
                         {
@@ -115,6 +144,28 @@ class ServerViewSet(viewsets.ModelViewSet):
                             }
                         }
                     )
+
+                    # Vérification des seuils critiques (90%+)
+                    threshold = 90
+                    alerts = []
+                    if metric.cpu_usage > threshold: alerts.append(f"CPU: {metric.cpu_usage}%")
+                    if metric.ram_usage > threshold: alerts.append(f"RAM: {metric.ram_usage}%")
+                    if metric.disk_usage > threshold: alerts.append(f"Disque: {metric.disk_usage}%")
+
+                    if alerts:
+                        async_to_sync(channel_layer.group_send)(
+                            'dashboard_stats',
+                            {
+                                'type': 'stats_update',
+                                'data': {
+                                    'type': 'critical_alert',
+                                    'server_id': server.id,
+                                    'server_nom': server.nom,
+                                    'message': f"Saturation détectée sur {server.nom} ({', '.join(alerts)})",
+                                    'niveau': 'critical'
+                                }
+                            }
+                        )
                 except Exception:
                     pass  # Ne pas bloquer si Redis est indisponible
 

@@ -10,6 +10,7 @@ from apps.certificates.models import SSLCertificate
 from .models import EventLog
 from django.utils import timezone
 from django.db.models import Avg
+from django.db.models.functions import TruncHour
 
 class DashboardStatsView(APIView):
     permission_classes = [IsAuthenticated]
@@ -60,6 +61,25 @@ class DashboardStatsView(APIView):
             avg_ram = round(agg.get('ram_usage__avg') or 0, 1)
             avg_disk = round(agg.get('disk_usage__avg') or 0, 1)
 
+        # Historique Global (24h)
+        last_24h = now - timezone.timedelta(hours=24)
+        history_query = ServerMetric.objects.filter(
+            timestamp__gte=last_24h
+        ).annotate(
+            hour=TruncHour('timestamp')
+        ).values('hour').annotate(
+            cpu=Avg('cpu_usage'),
+            ram=Avg('ram_usage'),
+            disk=Avg('disk_usage')
+        ).order_by('hour')
+
+        history_data = [{
+            'time': item['hour'].strftime('%H:%M'),
+            'cpu': round(item['cpu'], 1),
+            'ram': round(item['ram'], 1),
+            'disk': round(item['disk'], 1)
+        } for item in history_query]
+
         return Response({
             'serveurs': {
                 'total': total_servers,
@@ -85,5 +105,6 @@ class DashboardStatsView(APIView):
             'logiciels': {'total': Software.objects.count()},
             'alertes': [],
             'evenements_recents': events_data,
+            'historique_24h': history_data,
             'timestamp': now.isoformat(),
         })

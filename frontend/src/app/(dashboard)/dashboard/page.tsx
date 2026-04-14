@@ -18,6 +18,7 @@ import {
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import toast from 'react-hot-toast';
+import Link from 'next/link';
 
 const getWSURL = () => {
   if (typeof window === 'undefined') return '';
@@ -32,6 +33,11 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [historyData, setHistoryData] = useState<any[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyScope, setHistoryScope] = useState<{type: 'global' | 'rack' | 'server', id?: number}>({type: 'global'});
+  const [racks, setRacks] = useState<any[]>([]);
+  const [serversList, setServersList] = useState<any[]>([]);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [wsConnected, setWsConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
@@ -40,12 +46,60 @@ export default function DashboardPage() {
     try {
       const data = await dashboardAPI.stats();
       setStats(data);
+      if (historyScope.type === 'global') {
+        setHistoryData(data.historique_24h);
+      }
       setLastUpdate(new Date());
     } catch (err) {
       console.error('Erreur stats:', err);
     } finally {
       setLoading(false);
     }
+  }, [historyScope]);
+
+  const fetchHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      let data;
+      if (historyScope.type === 'server' && historyScope.id) {
+        const resp = await fetch(`/api/servers/${historyScope.id}/history_24h/`, {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+        });
+        data = await resp.json();
+      } else if (historyScope.type === 'rack' && historyScope.id) {
+        const resp = await fetch(`/api/racks/${historyScope.id}/history_24h/`, {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` }
+        });
+        data = await resp.json();
+      } else {
+        const stats = await dashboardAPI.stats();
+        data = stats.historique_24h;
+      }
+      setHistoryData(data);
+    } catch (err) {
+      console.error('Erreur history:', err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [historyScope]);
+
+  useEffect(() => {
+    if (historyScope.type !== 'global') {
+      fetchHistory();
+    }
+  }, [historyScope, fetchHistory]);
+
+  useEffect(() => {
+    // Charger les listes pour le sélecteur
+    const loadLists = async () => {
+      try {
+        const rResp = await fetch('/api/racks/', { headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` } });
+        const sResp = await fetch('/api/servers/', { headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` } });
+        setRacks(await rResp.json());
+        setServersList(await sResp.json());
+      } catch (e) {}
+    };
+    loadLists();
   }, []);
 
   // Connexion WebSocket pour les mises à jour en temps réel
@@ -64,7 +118,7 @@ export default function DashboardPage() {
       setLastUpdate(new Date());
 
       if (data.type === 'metric') {
-        // Mise à jour des métriques moyennes en temps réel
+        // ... existence metrics update ...
         setStats(prev => {
           if (!prev) return prev;
           return {
@@ -80,7 +134,7 @@ export default function DashboardPage() {
           };
         });
       } else if (data.type === 'status') {
-        // Mise à jour des compteurs globaux en temps réel
+        // ... status update ...
         setStats(prev => {
           if (!prev) return prev;
           const isActif = data.statut === 'actif';
@@ -97,11 +151,13 @@ export default function DashboardPage() {
           `Alerte: Serveur "${data.nom}" est ${data.statut === 'actif' ? 'en ligne' : 'hors ligne'}`,
           { icon: data.statut === 'actif' ? '🟢' : '🔴', duration: 5000 }
         );
-      } else if (data.type === 'stats') {
-        setStats(prev => prev ? {
-          ...prev,
-          serveurs: { ...prev.serveurs, actifs: data.serveurs_actifs },
-        } : prev);
+      } else if (data.type === 'critical_alert') {
+        // DIFFUSION DE L'ALERTE CRITIQUE (>90%)
+        window.dispatchEvent(new CustomEvent('sgssa_ws_message', { detail: data }));
+        toast.error(data.message, { duration: 10000 });
+      } else if (data.type === 'snapshot') {
+        // Recharger les stats pour voir le nouveau snapshot si on est dans la galerie
+        fetchStats();
       }
     };
 
@@ -196,43 +252,58 @@ export default function DashboardPage() {
 
       {/* Cartes statistiques */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 24 }}>
-        <StatCard
-          icon={<Server size={22} />}
-          color="#3b82f6"
-          label="Serveurs"
-          value={stats.serveurs.total}
-          sub={`${stats.serveurs.actifs} actifs · ${stats.serveurs.inactifs} inactifs`}
-        />
-        <StatCard
-          icon={<Database size={22} />}
-          color="#6366f1"
-          label="Racks"
-          value={stats.racks.total}
-          sub="Infrastructures physiques"
-        />
-        <StatCard
-          icon={<Globe size={22} />}
-          color="#10b981"
-          label="Applications Web"
-          value={stats.applications.total}
-          sub={`${stats.applications.en_ligne} en ligne`}
-        />
-        <StatCard
-          icon={<Package size={22} />}
-          color="#06b6d4"
-          label="Logiciels"
-          value={stats.logiciels.total}
-          sub="Inventaire logiciels"
-        />
-        <StatCard
-          icon={<Shield size={22} />}
-          color={stats.certificats.critiques > 0 ? '#ef4444' : '#10b981'}
-          label="Certificats SSL"
-          value={stats.certificats.total}
-          sub={stats.certificats.critiques > 0
-            ? `⚠ ${stats.certificats.critiques} critique(s)`
-            : `${stats.certificats.valides} valides`}
-        />
+        <Link href="/servers" style={{ textDecoration: 'none' }}>
+          <StatCard
+            icon={<Server size={22} />}
+            color="#3b82f6"
+            label="Serveurs"
+            value={stats.serveurs.total}
+            sub={`${stats.serveurs.actifs} actifs · ${stats.serveurs.inactifs} inactifs`}
+            clickable
+          />
+        </Link>
+        <Link href="/racks" style={{ textDecoration: 'none' }}>
+          <StatCard
+            icon={<Database size={22} />}
+            color="#6366f1"
+            label="Racks"
+            value={stats.racks.total}
+            sub="Infrastructures physiques"
+            clickable
+          />
+        </Link>
+        <Link href="/webapps" style={{ textDecoration: 'none' }}>
+          <StatCard
+            icon={<Globe size={22} />}
+            color="#10b981"
+            label="Applications Web"
+            value={stats.applications.total}
+            sub={`${stats.applications.en_ligne} en ligne`}
+            clickable
+          />
+        </Link>
+        <Link href="/software" style={{ textDecoration: 'none' }}>
+          <StatCard
+            icon={<Package size={22} />}
+            color="#06b6d4"
+            label="Logiciels"
+            value={stats.logiciels.total}
+            sub="Inventaire logiciels"
+            clickable
+          />
+        </Link>
+        <Link href="/certificates" style={{ textDecoration: 'none' }}>
+          <StatCard
+            icon={<Shield size={22} />}
+            color={stats.certificats.critiques > 0 ? '#ef4444' : '#10b981'}
+            label="Certificats SSL"
+            value={stats.certificats.total}
+            sub={stats.certificats.critiques > 0
+              ? `⚠ ${stats.certificats.critiques} critique(s)`
+              : `${stats.certificats.valides} valides`}
+            clickable
+          />
+        </Link>
         <StatCard
           icon={<Cpu size={22} />}
           color="#f59e0b"
@@ -240,6 +311,70 @@ export default function DashboardPage() {
           value={`${stats.serveurs.metriques_moy.cpu}%`}
           sub={`RAM: ${stats.serveurs.metriques_moy.ram}% · Disk: ${stats.serveurs.metriques_moy.disk}%`}
         />
+      </div>
+
+      {/* Graphique d'historique 24h Isolé */}
+      <div className="card" style={{ marginBottom: 24 }}>
+        <div className="card-header" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <TrendingUp size={20} style={{ color: '#3b82f6' }} />
+            <div>
+              <span style={{ fontWeight: 700, fontSize: 15, display: 'block' }}>Historique des ressources (24h)</span>
+              <span style={{ fontSize: 11, color: '#64748b' }}>Analyse isolée par serveur ou par rack</span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <select 
+              className="btn btn-ghost btn-sm"
+              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}
+              value={`${historyScope.type}-${historyScope.id || ''}`}
+              onChange={(e) => {
+                const [type, id] = e.target.value.split('-');
+                setHistoryScope({ type: type as any, id: id ? parseInt(id) : undefined });
+              }}
+            >
+              <option value="global-">Toute l'infrastructure</option>
+              <optgroup label="Par Rack">
+                {racks.map(r => <option key={`r-${r.id}`} value={`rack-${r.id}`}>{r.nom}</option>)}
+              </optgroup>
+              <optgroup label="Par Serveur">
+                {serversList.map(s => <option key={`s-${s.id}`} value={`server-${s.id}`}>{s.nom}</option>)}
+              </optgroup>
+            </select>
+          </div>
+        </div>
+        
+        <div style={{ padding: '24px 0', opacity: historyLoading ? 0.5 : 1, transition: 'opacity 0.2s', position: 'relative' }}>
+          {historyLoading && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
+              <RefreshCw className="animate-spin" size={24} style={{ color: '#3b82f6' }} />
+            </div>
+          )}
+          <ResponsiveContainer width="100%" height={300}>
+            <AreaChart data={historyData}>
+              <defs>
+                <linearGradient id="colorCpu" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                </linearGradient>
+                <linearGradient id="colorRam" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+              <XAxis dataKey="time" stroke="#475569" fontSize={11} tickLine={false} axisLine={false} />
+              <YAxis stroke="#475569" fontSize={11} tickLine={false} axisLine={false} unit="%" />
+              <Tooltip 
+                contentStyle={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, boxShadow: '0 10px 15px -3px rgba(0,0,0,0.5)' }}
+                itemStyle={{ fontSize: 12 }}
+              />
+              <Area type="monotone" dataKey="cpu" name="CPU" stroke="#3b82f6" fillOpacity={1} fill="url(#colorCpu)" strokeWidth={2} />
+              <Area type="monotone" dataKey="ram" name="RAM" stroke="#6366f1" fillOpacity={1} fill="url(#colorRam)" strokeWidth={2} />
+              <Area type="monotone" dataKey="disk" name="Disque" stroke="#10b981" fillOpacity={0} strokeWidth={2} strokeDasharray="5 5" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
       {/* Graphiques */}
@@ -373,6 +508,46 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Galerie de Surveillance */}
+      <div className="card" style={{ marginTop: 24 }}>
+        <div className="card-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Wifi size={16} style={{ color: '#10b981' }} />
+            <span style={{ fontWeight: 600, fontSize: 14 }}>Galerie de Surveillance</span>
+          </div>
+          <Link href="/servers" className="btn btn-ghost btn-sm" style={{ fontSize: 11 }}>
+            Voir tous les serveurs
+          </Link>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16, padding: '8px 0' }}>
+          {serversList.filter((s: any) => s.snapshots && s.snapshots.length > 0).map((server: any) => (
+            <div key={server.id} style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--card-bg)' }}>
+              <img
+                src={server.snapshots[0].image}
+                alt={server.nom}
+                style={{ width: '100%', height: 160, objectFit: 'cover', display: 'block' }}
+              />
+              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '12px', background: 'linear-gradient(transparent, rgba(0,0,0,0.85))' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'white' }}>{server.nom}</div>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.75)', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                  <Clock size={10} />
+                  {formatDistanceToNow(new Date(server.snapshots[0].timestamp), { addSuffix: true, locale: fr })}
+                </div>
+              </div>
+              <div style={{ position: 'absolute', top: 8, right: 8, padding: '2px 8px', borderRadius: 999, background: server.statut === 'actif' ? 'rgba(16,185,129,0.85)' : 'rgba(239,68,68,0.85)', fontSize: 10, fontWeight: 700, color: 'white' }}>
+                {server.statut === 'actif' ? 'EN LIGNE' : 'HORS LIGNE'}
+              </div>
+            </div>
+          ))}
+          {serversList.filter((s: any) => s.snapshots && s.snapshots.length > 0).length === 0 && (
+            <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '40px 0', color: '#64748b' }}>
+              <Wifi size={32} style={{ opacity: 0.3, marginBottom: 8 }} />
+              <div style={{ fontSize: 13 }}>Aucune capture disponible — l'agent enverra sa première photo dans 5 min.</div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -380,15 +555,16 @@ export default function DashboardPage() {
 // ─────────────────────────────────────────────────────────────
 // Composants internes
 // ─────────────────────────────────────────────────────────────
-function StatCard({ icon, color, label, value, sub }: {
+function StatCard({ icon, color, label, value, sub, clickable }: {
   icon: React.ReactNode;
   color: string;
   label: string;
   value: number | string;
   sub?: string;
+  clickable?: boolean;
 }) {
   return (
-    <div className="stat-card">
+    <div className={`stat-card ${clickable ? 'stat-card-clickable' : ''}`}>
       <div className="stat-icon" style={{ background: `${color}20`, color }}>
         {icon}
       </div>
@@ -401,6 +577,15 @@ function StatCard({ icon, color, label, value, sub }: {
         </div>
         {sub && <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>{sub}</div>}
       </div>
+      {clickable && (
+        <style jsx>{`
+          .stat-card-clickable:hover {
+            border-color: ${color}40;
+            background: rgba(255,255,255,0.03);
+            transform: translateY(-2px);
+          }
+        `}</style>
+      )}
     </div>
   );
 }
