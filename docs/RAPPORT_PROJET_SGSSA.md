@@ -144,7 +144,6 @@ sequenceDiagram
 
 **Signature** :  
 *Ahmed Taleb Tolba*  
-<<<<<<< HEAD
-=======
+
 
 >>>>>>> 58cc3a4 (feat: add critical alerts over 90 percent, isolated 24h history per server and rack, clickable dashboard cards, and surveillance gallery)
