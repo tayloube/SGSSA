@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { usersAPI } from '@/lib/api';
+import { usersAPI, authAPI } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import type { User, Role } from '@/types';
 import { Shield, Plus, MoreVertical, Trash2, Edit2, Search, User as UserIcon, Power, ShieldX } from 'lucide-react';
 import { toast } from 'react-hot-toast';
@@ -12,9 +13,18 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   
+  const { user: currentUser } = useAuth();
+  
   // Modals
   const [showModal, setShowModal] = useState(false);
   const [editUser, setEditUser] = useState<User | null>(null);
+  
+  // Sudo Mode (Vérification de mot de passe)
+  const [sudoAction, setSudoAction] = useState<(() => void) | null>(null);
+
+  const requireSudo = (action: () => void) => {
+    setSudoAction(() => action);
+  };
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -32,36 +42,44 @@ export default function UsersPage() {
     fetchUsers();
   }, [fetchUsers]);
 
-  const handleDelete = async (id: number, nom: string) => {
+  const handleDelete = (id: number, nom: string) => {
     if (!confirm(`Toute suppression est définitive. Supprimer l'utilisateur "${nom}" ?`)) return;
-    try {
-      await usersAPI.delete(id);
-      toast.success(`Utilisateur "${nom}" supprimé`);
-      fetchUsers();
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || 'Erreur lors de la suppression');
-    }
+    requireSudo(async () => {
+      try {
+        await usersAPI.delete(id);
+        toast.success(`Utilisateur "${nom}" supprimé`);
+        fetchUsers();
+      } catch (err: any) {
+        toast.error(err.response?.data?.error || 'Erreur lors de la suppression');
+      }
+    });
   };
 
-  const handleToggleStatus = async (id: number, e: React.MouseEvent) => {
-    e.stopPropagation(); // Avoid triggering row clicks if any
-    try {
-      const res = await usersAPI.toggle(id);
-      toast.success(res.message);
-      fetchUsers();
-    } catch {
-      toast.error('Erreur lors du changement de statut');
-    }
+  const handleToggleStatus = (id: number, e: React.MouseEvent) => {
+    e.stopPropagation(); // Avoid triggering row clicks
+    requireSudo(async () => {
+      try {
+        const res = await usersAPI.toggle(id);
+        toast.success(res.message);
+        fetchUsers();
+      } catch {
+        toast.error('Erreur lors du changement de statut');
+      }
+    });
   };
 
   const openEdit = (user: User) => {
-    setEditUser(user);
-    setShowModal(true);
+    requireSudo(() => {
+      setEditUser(user);
+      setShowModal(true);
+    });
   };
   
   const openNew = () => {
-    setEditUser(null);
-    setShowModal(true);
+    requireSudo(() => {
+      setEditUser(null);
+      setShowModal(true);
+    });
   };
 
   return (
@@ -168,12 +186,34 @@ export default function UsersPage() {
         </div>
       )}
 
-      {/* Modal Formulaire */}
+      {/* Modal Formulaire Utilisateur */}
       {showModal && (
         <UserFormModal 
           user={editUser}
           onClose={() => setShowModal(false)}
           onSuccess={() => { setShowModal(false); fetchUsers(); }}
+        />
+      )}
+
+      {/* Sudo Modal (Vérification de sécurité) */}
+      {sudoAction && currentUser && (
+        <SudoModal
+          adminEmail={currentUser.email}
+          onConfirm={async (password) => {
+            try {
+              // Vérifie silencieusement les credentials en rafraichissant les tokens
+              await authAPI.login(currentUser.email, password);
+              toast.success("Identité confirmée", { id: 'sudo-success' });
+              
+              setSudoAction(null);
+              // Execute the trapped action !
+              if (sudoAction) sudoAction();
+            } catch (e) {
+              toast.error("Mot de passe incorrect ! Action annulée.");
+              setSudoAction(null);
+            }
+          }}
+          onCancel={() => setSudoAction(null)}
         />
       )}
     </div>
@@ -305,6 +345,60 @@ function UserFormModal({ user, onClose, onSuccess }: { user: User | null, onClos
             <button type="button" onClick={onClose} className="btn btn-ghost">Annuler</button>
             <button type="submit" className="btn btn-primary" disabled={submitting}>
               {submitting ? 'Sauvegarde...' : 'Enregistrer'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+export function SudoModal({ adminEmail, onConfirm, onCancel }: { adminEmail: string, onConfirm: (pwd: string) => void, onCancel: () => void }) {
+  const [pwd, setPwd] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    await onConfirm(pwd);
+    setLoading(false);
+  };
+
+  return (
+    <div className="modal-overlay" style={{ zIndex: 9999 }}>
+      <div className="modal-box" style={{ maxWidth: 400, animation: 'fadeIn 0.2s ease-out' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+          <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <ShieldX size={20} />
+          </div>
+          <div>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9' }}>Vérification de sécurité</h3>
+            <p style={{ fontSize: 12, color: '#94a3b8' }}>Espace de haute administration</p>
+          </div>
+        </div>
+
+        <p style={{ fontSize: 13, color: '#e2e8f0', marginBottom: 20 }}>
+          Vous êtes sur le point d'effectuer une action sensible. Veuillez confirmer votre mot de passe pour <strong>{adminEmail}</strong>.
+        </p>
+
+        <form onSubmit={onSubmit}>
+          <div className="form-group">
+            <input 
+              type="password" 
+              className="form-input" 
+              placeholder="Votre mot de passe actuel..." 
+              required 
+              autoFocus
+              value={pwd}
+              onChange={e => setPwd(e.target.value)}
+              style={{ background: 'rgba(0,0,0,0.2)', borderColor: 'rgba(239, 68, 68, 0.3)' }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 24 }}>
+            <button type="button" onClick={onCancel} className="btn btn-ghost" disabled={loading}>Annuler</button>
+            <button type="submit" className="btn btn-danger" disabled={loading}>
+              {loading ? 'Vérification...' : 'Confirmer'}
             </button>
           </div>
         </form>
