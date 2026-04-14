@@ -69,104 +69,105 @@ export default function UsersPage() {
       {/* En-tête */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16, marginBottom: 24 }}>
         <div>
-          <h1 className="page-title"><Shield size={28} color="#3b82f6" /> Gestion des Utilisateurs</h1>
-          <p className="page-subtitle">Gérez les accès et les rôles de votre équipe ({users.length} comptes)</p>
+          <h1 style={{ fontSize: 20, fontWeight: 700, color: '#f1f5f9', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Shield size={24} color="#3b82f6" /> Gestion des Utilisateurs
+          </h1>
+          <p style={{ fontSize: 13, color: '#64748b' }}>
+            Gérez les accès et les rôles de votre équipe ({users.length} comptes)
+          </p>
         </div>
         
         <div style={{ display: 'flex', gap: 12 }}>
-          <div className="search-bar">
-            <Search size={18} color="#64748b" />
+          <div style={{ position: 'relative', minWidth: 250 }}>
+            <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
             <input 
+              className="form-input"
+              style={{ paddingLeft: 32 }}
               type="text" 
               placeholder="Rechercher (nom, email)..." 
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="search-input"
             />
           </div>
           <button className="btn btn-primary" onClick={openNew}>
-            <Plus size={20} /> Nouvel Utilisateur
+            <Plus size={16} /> Nouvel Utilisateur
           </button>
         </div>
       </div>
 
-      {/* Liste des Utilisateurs */}
       {loading ? (
         <div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>Chargement...</div>
       ) : (
-        <div className="card">
-          <table className="table" style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                <th style={{ padding: '16px', color: '#94a3b8', fontWeight: 600, fontSize: 12, textTransform: 'uppercase' }}>Utilisateur</th>
-                <th style={{ padding: '16px', color: '#94a3b8', fontWeight: 600, fontSize: 12, textTransform: 'uppercase' }}>Rôle</th>
-                <th style={{ padding: '16px', color: '#94a3b8', fontWeight: 600, fontSize: 12, textTransform: 'uppercase' }}>Statut</th>
-                <th style={{ padding: '16px', color: '#94a3b8', fontWeight: 600, fontSize: 12, textTransform: 'uppercase' }}>Dernière Connexion</th>
-                <th style={{ padding: '16px', width: 80 }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map(user => (
-                <tr key={user.id} className="hover-bg" style={{ borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
-                  <td style={{ padding: '16px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <div style={{ 
-                        width: 40, height: 40, borderRadius: '50%', 
-                        background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold'
-                      }}>
-                        {user.prenom[0]}{user.nom[0]}
-                      </div>
-                      <div>
-                        <div style={{ fontWeight: 600, color: '#f1f5f9' }}>{user.nom_complet}</div>
-                        <div style={{ fontSize: 12, color: '#64748b' }}>{user.email}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td style={{ padding: '16px' }}>
-                    <RoleBadge role={user.role} />
-                  </td>
-                  <td style={{ padding: '16px' }}>
-                    <span style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 6,
-                      padding: '4px 8px', borderRadius: 12, fontSize: 12, fontWeight: 500,
-                      background: user.est_actif ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                      color: user.est_actif ? '#10b981' : '#ef4444'
-                    }}>
-                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor' }} />
-                      {user.est_actif ? 'Actif' : 'Désactivé'}
-                    </span>
-                  </td>
-                  <td style={{ padding: '16px', fontSize: 13, color: '#94a3b8' }}>
-                    {user.derniere_connexion 
-                      ? format(new Date(user.derniere_connexion), 'dd MMM yyyy - HH:mm', { locale: fr })
-                      : 'Jamais connecté'}
-                  </td>
-                  <td style={{ padding: '16px' }}>
-                    <div className="dropdown dropdown-end">
-                      <label tabIndex={0} className="btn btn-ghost btn-icon">
-                        <MoreVertical size={18} />
-                      </label>
-                      <ul tabIndex={0} className="dropdown-content menu p-2 shadow bg-slate-800 rounded-box w-52" style={{ zIndex: 10 }}>
-                        <li><a onClick={() => openEdit(user)}><Edit2 size={16}/> Éditer</a></li>
-                        <li>
-                          <a onClick={(e) => handleToggleStatus(user.id, e)} className={user.est_actif ? "text-orange-400" : "text-emerald-400"}>
-                            <Power size={16}/> {user.est_actif ? 'Suspendre l\'accès' : 'Réactiver l\'accès'}
-                          </a>
-                        </li>
-                        <li><a onClick={() => handleDelete(user.id, user.nom_complet)} className="text-red-400"><Trash2 size={16}/> Supprimer</a></li>
-                      </ul>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {users.length === 0 && (
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div className="data-table-wrapper">
+            <table className="data-table">
+              <thead>
                 <tr>
-                  <td colSpan={5} style={{ padding: 32, textAlign: 'center', color: '#64748b' }}>Aucun utilisateur trouvé.</td>
+                  <th>Utilisateur</th>
+                  <th>Rôle</th>
+                  <th>Statut</th>
+                  <th>Dernière Connexion</th>
+                  <th></th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {users.map(user => (
+                  <tr key={user.id}>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <div style={{ 
+                          width: 32, height: 32, borderRadius: '50%', 
+                          background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: 12
+                        }}>
+                          {user.prenom[0]}{user.nom[0]}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 600, color: '#f1f5f9' }}>{user.nom_complet}</div>
+                          <div style={{ fontSize: 11, color: '#64748b' }}>{user.email}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <RoleBadge role={user.role} />
+                    </td>
+                    <td>
+                      <span className={user.est_actif ? "badge badge-actif" : "badge badge-inactif"}>
+                        <div className={`live-dot ${user.est_actif ? 'live-dot-green' : 'live-dot-red'}`} style={{ width: 6, height: 6 }} />
+                        {user.est_actif ? 'Actif' : 'Désactivé'}
+                      </span>
+                    </td>
+                    <td style={{ fontSize: 12, color: '#94a3b8' }}>
+                      {user.derniere_connexion 
+                        ? format(new Date(user.derniere_connexion), 'dd MMM yyyy - HH:mm', { locale: fr })
+                        : 'Jamais connecté'}
+                    </td>
+                    <td>
+                      <div className="dropdown dropdown-end">
+                        <label tabIndex={0} className="btn btn-ghost btn-icon">
+                          <MoreVertical size={16} />
+                        </label>
+                        <ul tabIndex={0} className="dropdown-content menu p-2 shadow bg-slate-800 rounded-box w-52" style={{ zIndex: 10 }}>
+                          <li><a onClick={() => openEdit(user)}><Edit2 size={16}/> Éditer</a></li>
+                          <li>
+                            <a onClick={(e) => handleToggleStatus(user.id, e)} className={user.est_actif ? "text-orange-400" : "text-emerald-400"}>
+                              <Power size={16}/> {user.est_actif ? 'Suspendre l\'accès' : 'Réactiver l\'accès'}
+                            </a>
+                          </li>
+                          <li><a onClick={() => handleDelete(user.id, user.nom_complet)} className="text-red-400"><Trash2 size={16}/> Supprimer</a></li>
+                        </ul>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {users.length === 0 && (
+                  <tr>
+                    <td colSpan={5} style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>Aucun utilisateur trouvé.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -252,61 +253,58 @@ function UserFormModal({ user, onClose, onSuccess }: { user: User | null, onClos
     <div className="modal-overlay">
       <div className="modal-box" style={{ maxWidth: 500 }}>
         <div className="modal-header">
-          <h2 style={{ fontSize: 18, fontWeight: 700 }}>
-            {user ? 'Modifier l\'utilisateur' : 'Nouvel utilisateur'}
-          </h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 8, background: 'rgba(59,130,246,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <UserIcon size={18} style={{ color: '#60a5fa' }} />
+            </div>
+            <h2 style={{ fontSize: 16, fontWeight: 600 }}>{user ? 'Modifier l\'utilisateur' : 'Nouvel utilisateur'}</h2>
+          </div>
           <button onClick={onClose} className="btn btn-ghost btn-icon"><span style={{ fontSize: 18 }}>×</span></button>
         </div>
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ display: 'flex', gap: 16 }}>
-            <div className="form-control" style={{ flex: 1 }}>
-              <label>Prénom *</label>
-              <input type="text" className="input" required value={formData.prenom} onChange={e => setFormData({...formData, prenom: e.target.value})} />
+        <form onSubmit={handleSubmit}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="form-group">
+              <label className="form-label">Prénom *</label>
+              <input type="text" className="form-input" required value={formData.prenom} onChange={e => setFormData({...formData, prenom: e.target.value})} />
             </div>
-            <div className="form-control" style={{ flex: 1 }}>
-              <label>Nom *</label>
-              <input type="text" className="input" required value={formData.nom} onChange={e => setFormData({...formData, nom: e.target.value})} />
+            <div className="form-group">
+              <label className="form-label">Nom *</label>
+              <input type="text" className="form-input" required value={formData.nom} onChange={e => setFormData({...formData, nom: e.target.value})} />
             </div>
-          </div>
           
-          <div className="form-control">
-            <label>Adresse Courriel *</label>
-            <input type="email" className="input" required value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
+          <div className="form-group" style={{ gridColumn: '1/3' }}>
+            <label className="form-label">Adresse Courriel *</label>
+            <input type="email" className="form-input" required value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
           </div>
 
-          <div style={{ display: 'flex', gap: 16 }}>
-             <div className="form-control" style={{ flex: 1 }}>
-                <label>Numéro de Téléphone</label>
-                <input type="text" className="input" placeholder="+123..." value={formData.telephone} onChange={e => setFormData({...formData, telephone: e.target.value})} />
-             </div>
+          <div className="form-group">
+            <label className="form-label">Numéro de Téléphone</label>
+            <input type="text" className="form-input" placeholder="+123..." value={formData.telephone} onChange={e => setFormData({...formData, telephone: e.target.value})} />
+          </div>
              
-             <div className="form-control" style={{ flex: 1 }}>
-                <label>Rôle *</label>
-                <select className="input" value={formData.role} onChange={e => setFormData({...formData, role: e.target.value as Role})}>
-                    <option value="lecteur">Lecteur</option>
-                    <option value="technicien">Technicien</option>
-                    <option value="superviseur">Superviseur</option>
-                    <option value="admin">Administrateur</option>
-                </select>
-            </div>
+          <div className="form-group">
+            <label className="form-label">Rôle *</label>
+            <select className="form-select" value={formData.role} onChange={e => setFormData({...formData, role: e.target.value as Role})}>
+                <option value="lecteur">Lecteur</option>
+                <option value="technicien">Technicien</option>
+                <option value="superviseur">Superviseur</option>
+                <option value="admin">Administrateur</option>
+            </select>
           </div>
 
-          <div className="form-control" style={{ marginTop: 8 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <label>Mot de passe {user ? '(Laissez vide pour conserver)' : '*'}</label>
-            </div>
-            <input type="password" minLength={6} className="input" required={!user} value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} />
+          <div className="form-group">
+            <label className="form-label">Mot de passe {user ? '(Optionnel)' : '*'}</label>
+            <input type="password" minLength={6} className="form-input" required={!user} value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} />
           </div>
 
-          {(!user || formData.password.length > 0) && (
-              <div className="form-control">
-                <label>Confirmer le mot de passe *</label>
-                <input type="password" minLength={6} className="input" required value={formData.password_confirm} onChange={e => setFormData({...formData, password_confirm: e.target.value})} />
-              </div>
-          )}
+          <div className="form-group">
+            <label className="form-label">Confirmer le mot de passe {user ? '(Optionnel)' : '*'}</label>
+            <input type="password" minLength={6} className="form-input" required={!user && formData.password.length > 0} value={formData.password_confirm} onChange={e => setFormData({...formData, password_confirm: e.target.value})} />
+          </div>
+          </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24, paddingBottom: 8 }}>
             <button type="button" onClick={onClose} className="btn btn-ghost">Annuler</button>
             <button type="submit" className="btn btn-primary" disabled={submitting}>
               {submitting ? 'Sauvegarde...' : 'Enregistrer'}
