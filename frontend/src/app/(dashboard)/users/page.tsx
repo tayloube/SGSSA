@@ -143,19 +143,16 @@ export default function UsersPage() {
                         : 'Jamais connecté'}
                     </td>
                     <td>
-                      <div className="dropdown dropdown-end">
-                        <label tabIndex={0} className="btn btn-ghost btn-icon">
-                          <MoreVertical size={16} />
-                        </label>
-                        <ul tabIndex={0} className="dropdown-content menu p-2 shadow bg-slate-800 rounded-box w-52" style={{ zIndex: 10 }}>
-                          <li><a onClick={() => openEdit(user)}><Edit2 size={16}/> Éditer</a></li>
-                          <li>
-                            <a onClick={(e) => handleToggleStatus(user.id, e)} className={user.est_actif ? "text-orange-400" : "text-emerald-400"}>
-                              <Power size={16}/> {user.est_actif ? 'Suspendre l\'accès' : 'Réactiver l\'accès'}
-                            </a>
-                          </li>
-                          <li><a onClick={() => handleDelete(user.id, user.nom_complet)} className="text-red-400"><Trash2 size={16}/> Supprimer</a></li>
-                        </ul>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button onClick={() => openEdit(user)} className="btn btn-ghost btn-icon btn-sm" title="Modifier">
+                          <Edit2 size={13} />
+                        </button>
+                        <button onClick={(e) => handleToggleStatus(user.id, e)} className="btn btn-ghost btn-icon btn-sm" title={user.est_actif ? 'Suspendre l\'accès' : 'Réactiver l\'accès'} style={{ color: user.est_actif ? '#fbbf24' : '#10b981' }}>
+                          <Power size={13} />
+                        </button>
+                        <button onClick={() => handleDelete(user.id, user.nom_complet)} className="btn btn-ghost btn-icon btn-sm" title="Supprimer" style={{ color: '#ef4444' }}>
+                          <Trash2 size={13} />
+                        </button>
                       </div>
                     </td>
                   </tr>
