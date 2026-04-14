@@ -77,8 +77,8 @@ export interface Server {
   rack?: number;
   rack_nom?: string;
   derniere_metrique?: {
-    cpu: number;
-    ram: number;
+    cpu_usage: number;
+    ram_usage: number;
     disk_usage: number;
     cpu_temp?: number;
     timestamp: string;
