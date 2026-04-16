@@ -11,23 +11,6 @@ import {
   Edit2, Trash2, Eye, Activity, RefreshCw, Wifi, WifiOff, Settings
 } from 'lucide-react';
 
-const getWsUrl = () => {
-  const envUrl = process.env.NEXT_PUBLIC_WS_URL;
-  if (envUrl && envUrl.trim() !== "") return envUrl;
-  
-  // En mode client, détection intelligente
-  if (typeof window !== 'undefined') {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    // Si on est sur le port 3000 (dev local), le backend est probablement sur 8000
-    if (window.location.port === '3000') return `${protocol}//localhost:8000`;
-    // Sinon (8080 ou prod), on utilise le même host/port (reverse proxy Nginx)
-    return `${protocol}//${window.location.host}`;
-  }
-  return 'ws://localhost:8000';
-};
-
-const WS_URL = getWsUrl();
-
 const TYPE_LABELS: Record<string, string> = { physique: 'Physique', virtuel: 'Virtuel', cloud: 'Cloud' };
 const STATUT_LABELS: Record<string, string> = { actif: 'Actif', inactif: 'Inactif', maintenance: 'Maintenance' };
 
@@ -67,6 +50,17 @@ export default function ServersPage() {
     const token = document.cookie.split('; ').find(r => r.startsWith('access_token='))?.split('=')[1];
     if (!token) return;
 
+    // Détection dynamique de l'URL WS (Client-side only)
+    const getWsUrl = () => {
+      const envUrl = process.env.NEXT_PUBLIC_WS_URL;
+      if (envUrl && envUrl.trim() !== "") return envUrl;
+      
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      if (window.location.port === '3000') return `${protocol}//localhost:8000`;
+      return `${protocol}//${window.location.host}`;
+    };
+
+    const WS_URL = getWsUrl();
     const ws = new WebSocket(`${WS_URL}/ws/dashboard/?token=${token}`);
     wsRef.current = ws;
 
