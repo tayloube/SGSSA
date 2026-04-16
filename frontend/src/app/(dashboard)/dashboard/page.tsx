@@ -20,14 +20,8 @@ import { fr } from 'date-fns/locale';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
 
-const getWSURL = () => {
-  if (typeof window === 'undefined') return '';
-  const port = window.location.port ? `:${window.location.port}` : '';
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return process.env.NEXT_PUBLIC_WS_URL || `${protocol}//${window.location.hostname}${port}`;
-};
-
-const WS_URL = getWSURL();
+// Suppression du calcul global de WS_URL (cause de crash SSR)
+// La détection se fait maintenant dynamiquement dans le useEffect
 
 export default function DashboardPage() {
   const { user } = useAuth();
@@ -107,6 +101,14 @@ export default function DashboardPage() {
     const token = document.cookie.split('; ').find(r => r.startsWith('access_token='))?.split('=')[1];
     if (!token) return;
 
+    // Détection dynamique de l'URL WS (Client-side only)
+    const getWSURL = () => {
+      const port = window.location.port ? `:${window.location.port}` : '';
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      return process.env.NEXT_PUBLIC_WS_URL || `${protocol}//${window.location.hostname}${port}`;
+    };
+
+    const WS_URL = getWSURL();
     const ws = new WebSocket(`${WS_URL}/ws/dashboard/?token=${token}`);
     wsRef.current = ws;
 
