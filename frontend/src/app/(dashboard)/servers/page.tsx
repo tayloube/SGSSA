@@ -11,7 +11,22 @@ import {
   Edit2, Trash2, Eye, Activity, RefreshCw, Wifi, WifiOff, Settings
 } from 'lucide-react';
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000';
+const getWsUrl = () => {
+  const envUrl = process.env.NEXT_PUBLIC_WS_URL;
+  if (envUrl && envUrl.trim() !== "") return envUrl;
+  
+  // En mode client, détection intelligente
+  if (typeof window !== 'undefined') {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    // Si on est sur le port 3000 (dev local), le backend est probablement sur 8000
+    if (window.location.port === '3000') return `${protocol}//localhost:8000`;
+    // Sinon (8080 ou prod), on utilise le même host/port (reverse proxy Nginx)
+    return `${protocol}//${window.location.host}`;
+  }
+  return 'ws://localhost:8000';
+};
+
+const WS_URL = getWsUrl();
 
 const TYPE_LABELS: Record<string, string> = { physique: 'Physique', virtuel: 'Virtuel', cloud: 'Cloud' };
 const STATUT_LABELS: Record<string, string> = { actif: 'Actif', inactif: 'Inactif', maintenance: 'Maintenance' };
@@ -58,8 +73,9 @@ export default function ServersPage() {
     ws.onopen = () => setWsConnected(true);
     ws.onclose = () => setWsConnected(false);
     ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === 'metric') {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'metric') {
         setLiveMetrics(prev => ({
           ...prev,
           [data.server_id]: {
@@ -87,6 +103,9 @@ export default function ServersPage() {
           }
         }));
       }
+    } catch (e) {
+      console.error("WebSocket message error:", e, event.data);
+    }
     };
 
     return () => ws.close();

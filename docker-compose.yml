@@ -81,9 +81,10 @@ services:
       dockerfile: Dockerfile
     container_name: sgssa-frontend
     restart: unless-stopped
-    environment:
-      NEXT_PUBLIC_API_URL: ""
-      NEXT_PUBLIC_WS_URL: ""
+    # Le code détecte maintenant l'API et le WS dynamiquement si ces variables sont vides
+    # environment:
+    #   - NEXT_PUBLIC_API_URL=
+    #   - NEXT_PUBLIC_WS_URL=
     depends_on:
       - backend
     networks: [sgssa-net]

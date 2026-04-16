@@ -11,7 +11,21 @@ import type {
   PaginatedResponse, EventLog, ServerMetric
 } from '@/types';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL !== undefined ? process.env.NEXT_PUBLIC_API_URL : '';
+// Détection dynamique de l'URL de l'API
+const getApiUrl = () => {
+  const envUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (envUrl && envUrl.trim() !== "") return envUrl;
+  
+  // En mode client (navigateur), si pas de variable, on utilise l'origine actuelle
+  if (typeof window !== 'undefined') {
+    return window.location.origin;
+  }
+  
+  // Fallback par défaut pour le SSR ou dev
+  return 'http://localhost:8000';
+};
+
+const API_URL = getApiUrl();
 
 // ─────────────────────────────────────────────────────────────
 // Instance Axios
