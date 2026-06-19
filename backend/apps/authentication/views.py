@@ -20,6 +20,17 @@ class LoginView(TokenObtainPairView):
             if user:
                 user.derniere_connexion = timezone.now()
                 user.save(update_fields=['derniere_connexion'])
+                try:
+                    from apps.dashboard.models import EventLog
+                    EventLog.objects.create(
+                        user=user,
+                        category='LOGIN',
+                        action='LOGIN',
+                        details=f"Connexion réussie pour {user.nom_complet}.",
+                        ip_address=request.META.get('REMOTE_ADDR')
+                    )
+                except Exception:
+                    pass
         return response
 
 class LogoutView(generics.GenericAPIView):

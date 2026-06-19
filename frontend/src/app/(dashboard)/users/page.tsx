@@ -353,7 +353,7 @@ function UserFormModal({ user, onClose, onSuccess }: { user: User | null, onClos
   );
 }
 
-export function SudoModal({ adminEmail, onConfirm, onCancel }: { adminEmail: string, onConfirm: (pwd: string) => void, onCancel: () => void }) {
+function SudoModal({ adminEmail, onConfirm, onCancel }: { adminEmail: string, onConfirm: (pwd: string) => void, onCancel: () => void }) {
   const [pwd, setPwd] = useState('');
   const [loading, setLoading] = useState(false);
 

@@ -12,8 +12,8 @@ import {
 } from 'recharts';
 import {
   Server, Globe, Shield, AlertTriangle, CheckCircle2,
-  XCircle, Clock, Activity, Package, Database, RefreshCw,
-  TrendingUp, Cpu, HardDrive, Wifi
+  XCircle, Activity, Package, Database, RefreshCw,
+  TrendingUp, Cpu, HardDrive, Wifi, Clock
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -36,6 +36,11 @@ export default function DashboardPage() {
   const [wsConnected, setWsConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
 
+  // États additionnels pour la navigation de la galerie de captures
+  const [activeSnapshotIndexes, setActiveSnapshotIndexes] = useState<Record<number, number>>({});
+  const [hoveredServerId, setHoveredServerId] = useState<number | null>(null);
+  const [historyModalServer, setHistoryModalServer] = useState<any | null>(null);
+
   const fetchStats = useCallback(async () => {
     try {
       const data = await dashboardAPI.stats();
@@ -50,6 +55,16 @@ export default function DashboardPage() {
       setLoading(false);
     }
   }, [historyScope]);
+
+  const fetchServersList = useCallback(async () => {
+    try {
+      const sResp = await fetch('/api/servers/', { headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` } });
+      const sData = await sResp.json();
+      setServersList(Array.isArray(sData) ? sData : (sData.results || []));
+    } catch (e) {
+      console.error('Erreur chargement serveurs:', e);
+    }
+  }, []);
 
   const fetchHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -88,13 +103,15 @@ export default function DashboardPage() {
     const loadLists = async () => {
       try {
         const rResp = await fetch('/api/racks/', { headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` } });
-        const sResp = await fetch('/api/servers/', { headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` } });
-        setRacks(await rResp.json());
-        setServersList(await sResp.json());
-      } catch (e) {}
+        const rData = await rResp.json();
+        setRacks(Array.isArray(rData) ? rData : (rData.results || []));
+      } catch (e) {
+        console.error('Erreur chargement racks:', e);
+      }
+      await fetchServersList();
     };
     loadLists();
-  }, []);
+  }, [fetchServersList]);
 
   // Connexion WebSocket pour les mises à jour en temps réel
   useEffect(() => {
@@ -136,7 +153,7 @@ export default function DashboardPage() {
           };
         });
       } else if (data.type === 'status') {
-        // ... status update ...
+        // Mise à jour des compteurs
         setStats(prev => {
           if (!prev) return prev;
           const isActif = data.statut === 'actif';
@@ -149,23 +166,28 @@ export default function DashboardPage() {
             }
           };
         });
+        // Diffuser à tous les composants (notifications layout)
+        window.dispatchEvent(new CustomEvent('sgssa_ws_message', { detail: data }));
         toast(
           `Alerte: Serveur "${data.nom}" est ${data.statut === 'actif' ? 'en ligne' : 'hors ligne'}`,
           { icon: data.statut === 'actif' ? '🟢' : '🔴', duration: 5000 }
         );
       } else if (data.type === 'critical_alert') {
-        // DIFFUSION DE L'ALERTE CRITIQUE (>90%)
+        // Diffuser à tous les composants (notifications layout)
         window.dispatchEvent(new CustomEvent('sgssa_ws_message', { detail: data }));
         toast.error(data.message, { duration: 10000 });
       } else if (data.type === 'snapshot') {
-        // Recharger les stats pour voir le nouveau snapshot si on est dans la galerie
+        // Diffuser à tous les composants (notifications layout)
+        window.dispatchEvent(new CustomEvent('sgssa_ws_message', { detail: data }));
+        // Recharger la liste des serveurs pour voir le nouveau snapshot dans la galerie
         fetchStats();
+        fetchServersList();
       }
     };
 
     fetchStats();
     return () => ws.close();
-  }, [fetchStats]);
+  }, [fetchStats, fetchServersList]);
 
   if (loading) return (
     <div className="page-container">
@@ -252,8 +274,8 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Cartes statistiques */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 24 }}>
+      {/* Cartes statistiques + Dernière activité — même grille */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16, marginBottom: 24 }}>
         <Link href="/servers" style={{ textDecoration: 'none' }}>
           <StatCard
             icon={<Server size={22} />}
@@ -313,6 +335,52 @@ export default function DashboardPage() {
           value={`${stats.serveurs.metriques_moy.cpu}%`}
           sub={`RAM: ${stats.serveurs.metriques_moy.ram}% · Disk: ${stats.serveurs.metriques_moy.disk}%`}
         />
+        {/* Dernière activité — même ligne, large */}
+        <Link href="/activities" style={{ textDecoration: 'none', gridColumn: 'span 4', minWidth: 0 }}>
+          <div className="stat-card stat-card-clickable" style={{
+            display: 'grid',
+            gridTemplateColumns: 'auto 1fr auto',
+            alignItems: 'center',
+            gap: 20,
+            padding: '16px 20px',
+            height: '100%',
+            boxSizing: 'border-box',
+          }}>
+            <div className="stat-icon" style={{ background: 'rgba(249,115,22,0.15)', color: '#f97316', width: 44, height: 44, flexShrink: 0 }}>
+              <Activity size={20} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
+              <div style={{ fontSize: 10, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 1 }}>
+                Dernière activité
+              </div>
+              {stats.evenements_recents.length === 0 ? (
+                <div style={{ fontSize: 12, color: '#475569' }}>Aucune activité enregistrée</div>
+              ) : (
+                stats.evenements_recents.slice(0, 3).map((e: any, i: number) => {
+                  const catColors: Record<string, string> = {
+                    SERVER: '#3b82f6', SSL: '#10b981', SOFTWARE: '#06b6d4', LOGIN: '#8b5cf6', OTHER: '#64748b'
+                  };
+                  const catColor = catColors[e.category || 'OTHER'] || '#64748b';
+                  return (
+                    <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 8, opacity: i === 0 ? 1 : i === 1 ? 0.6 : 0.35 }}>
+                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: catColor, flexShrink: 0 }} />
+                      <span style={{ fontSize: 12, color: '#cbd5e1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                        <strong style={{ color: '#94a3b8', fontWeight: 600 }}>{e.utilisateur || 'Système'}</strong>
+                        {' — '}{e.details || e.action}
+                      </span>
+                      <span style={{ fontSize: 10, color: '#475569', flexShrink: 0 }}>
+                        {formatDistanceToNow(new Date(e.horodatage), { addSuffix: true, locale: fr })}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#f97316', fontWeight: 600, flexShrink: 0, opacity: 0.8 }}>
+              Voir tout <span style={{ fontSize: 14 }}>→</span>
+            </div>
+          </div>
+        </Link>
       </div>
 
       {/* Graphique d'historique 24h Isolé */}
@@ -462,94 +530,51 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Événements récents */}
-      <div className="card">
+
+
+      {/* ═══ Galerie de Surveillance ═══ */}
+      <div className="card" style={{ marginTop: 24 }}>
         <div className="card-header">
-          <span style={{ fontWeight: 600, fontSize: 14 }}>Activité récente</span>
-          <Clock size={16} style={{ color: '#64748b' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Wifi size={16} style={{ color: '#10b981' }} />
+            <span style={{ fontWeight: 700, fontSize: 15 }}>Galerie de Surveillance</span>
+            {stats.galerie && stats.galerie.length > 0 && (
+              <span style={{ fontSize: 11, color: '#64748b', background: 'rgba(255,255,255,0.05)', padding: '2px 8px', borderRadius: 999 }}>
+                {stats.galerie.length} serveur{stats.galerie.length > 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+          <Link href="/servers" className="btn btn-ghost btn-sm" style={{ fontSize: 11 }}>
+            Gérer les serveurs
+          </Link>
         </div>
-        {stats.evenements_recents.length === 0 ? (
-          <p style={{ color: '#64748b', fontSize: 13, textAlign: 'center', padding: '24px 0' }}>
-            Aucune activité récente
-          </p>
+
+        {!stats.galerie || stats.galerie.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '48px 0', color: '#475569' }}>
+            <Wifi size={36} style={{ opacity: 0.2, marginBottom: 12 }} />
+            <div style={{ fontSize: 14, fontWeight: 500, color: '#64748b' }}>Aucune capture disponible</div>
+            <div style={{ fontSize: 12, color: '#475569', marginTop: 4 }}>L'agent enverra sa première photo dans quelques minutes</div>
+          </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-            {stats.evenements_recents.map((e, i) => (
-              <div key={e.id} style={{
-                display: 'flex', alignItems: 'flex-start', gap: 12,
-                padding: '10px 0',
-                borderBottom: i < stats.evenements_recents.length - 1 ? '1px solid var(--border)' : 'none'
-              }}>
-                <div style={{
-                  width: 30, height: 30, borderRadius: 8,
-                  background: 'rgba(59,130,246,0.1)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  flexShrink: 0
-                }}>
-                  <Activity size={13} style={{ color: '#60a5fa' }} />
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, color: '#e2e8f0', marginBottom: 2 }}>
-                    <strong style={{ color: '#94a3b8' }}>{e.utilisateur}</strong>
-                    {' — '}{e.details || e.action}
-                  </div>
-                  <div style={{ fontSize: 11, color: '#475569' }}>
-                    {formatDistanceToNow(new Date(e.horodatage), { addSuffix: true, locale: fr })}
-                  </div>
-                </div>
-                <div style={{
-                  padding: '2px 8px', borderRadius: 4,
-                  background: 'rgba(255,255,255,0.05)',
-                  fontSize: 10, color: '#64748b', fontFamily: 'JetBrains Mono, monospace',
-                  flexShrink: 0
-                }}>
-                  {e.action}
-                </div>
-              </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 20, padding: '12px 0' }}>
+            {stats.galerie.map((srv) => (
+              <ServerGalleryCard
+                key={srv.server_id}
+                srv={srv}
+                onOpenLightbox={(srv, idx) => setHistoryModalServer({ ...srv, initialIndex: idx })}
+              />
             ))}
           </div>
         )}
       </div>
 
-      {/* Galerie de Surveillance */}
-      <div className="card" style={{ marginTop: 24 }}>
-        <div className="card-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Wifi size={16} style={{ color: '#10b981' }} />
-            <span style={{ fontWeight: 600, fontSize: 14 }}>Galerie de Surveillance</span>
-          </div>
-          <Link href="/servers" className="btn btn-ghost btn-sm" style={{ fontSize: 11 }}>
-            Voir tous les serveurs
-          </Link>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16, padding: '8px 0' }}>
-          {serversList.filter((s: any) => s.snapshots && s.snapshots.length > 0).map((server: any) => (
-            <div key={server.id} style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--card-bg)' }}>
-              <img
-                src={server.snapshots[0].image}
-                alt={server.nom}
-                style={{ width: '100%', height: 160, objectFit: 'cover', display: 'block' }}
-              />
-              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '12px', background: 'linear-gradient(transparent, rgba(0,0,0,0.85))' }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: 'white' }}>{server.nom}</div>
-                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.75)', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                  <Clock size={10} />
-                  {formatDistanceToNow(new Date(server.snapshots[0].timestamp), { addSuffix: true, locale: fr })}
-                </div>
-              </div>
-              <div style={{ position: 'absolute', top: 8, right: 8, padding: '2px 8px', borderRadius: 999, background: server.statut === 'actif' ? 'rgba(16,185,129,0.85)' : 'rgba(239,68,68,0.85)', fontSize: 10, fontWeight: 700, color: 'white' }}>
-                {server.statut === 'actif' ? 'EN LIGNE' : 'HORS LIGNE'}
-              </div>
-            </div>
-          ))}
-          {serversList.filter((s: any) => s.snapshots && s.snapshots.length > 0).length === 0 && (
-            <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '40px 0', color: '#64748b' }}>
-              <Wifi size={32} style={{ opacity: 0.3, marginBottom: 8 }} />
-              <div style={{ fontSize: 13 }}>Aucune capture disponible — l'agent enverra sa première photo dans 5 min.</div>
-            </div>
-          )}
-        </div>
-      </div>
+      {/* ═══ Lightbox plein écran ═══ */}
+      {historyModalServer && (
+        <GalleryLightbox
+          srv={historyModalServer}
+          onClose={() => setHistoryModalServer(null)}
+        />
+      )}
     </div>
   );
 }
@@ -610,3 +635,231 @@ function MetricBar({ label, value, color, icon }: { label: string; value: number
     </div>
   );
 }
+
+// ─────────────────────────────────────────────────────────────
+// Galerie par Serveur — Carrousel
+// ─────────────────────────────────────────────────────────────
+function ServerGalleryCard({
+  srv,
+  onOpenLightbox,
+}: {
+  srv: { server_id: number; server_nom: string; server_statut: string; server_ip: string; captures: { id: number; image: string; timestamp: string }[] };
+  onOpenLightbox: (srv: any, index: number) => void;
+}) {
+  const [current, setCurrent] = useState(0);
+  const captures = srv.captures;
+  const total = captures.length;
+  if (total === 0) return null;
+
+  const snap = captures[current];
+  const isOnline = srv.server_statut === 'actif';
+
+  const prev = () => setCurrent((c) => (c - 1 + total) % total);
+  const next = () => setCurrent((c) => (c + 1) % total);
+
+  return (
+    <div style={{
+      borderRadius: 14,
+      overflow: 'hidden',
+      border: '1px solid rgba(255,255,255,0.08)',
+      background: 'rgba(15,23,42,0.6)',
+      backdropFilter: 'blur(12px)',
+      boxShadow: '0 4px 24px rgba(0,0,0,0.3)',
+      transition: 'transform 0.2s, box-shadow 0.2s',
+    }}
+      onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-3px)'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 32px rgba(0,0,0,0.4)'; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateY(0)'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 24px rgba(0,0,0,0.3)'; }}
+    >
+      {/* Image principale avec navigation */}
+      <div
+        style={{ position: 'relative', height: 180, cursor: 'pointer', overflow: 'hidden', background: '#0f172a' }}
+        onClick={() => onOpenLightbox(srv, current)}
+      >
+        <img
+          src={snap.image}
+          alt={`${srv.server_nom} capture ${current + 1}`}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transition: 'opacity 0.25s' }}
+        />
+        {/* Gradient overlay */}
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 50%)' }} />
+
+        {/* Badges top */}
+        <div style={{ position: 'absolute', top: 10, left: 10, display: 'flex', gap: 6 }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 4,
+            padding: '3px 9px', borderRadius: 999,
+            background: isOnline ? 'rgba(16,185,129,0.9)' : 'rgba(239,68,68,0.9)',
+            fontSize: 10, fontWeight: 700, color: 'white',
+          }}>
+            <div style={{ width: 5, height: 5, borderRadius: '50%', background: 'white', opacity: isOnline ? 1 : 0.7 }} />
+            {isOnline ? 'EN LIGNE' : 'HORS LIGNE'}
+          </div>
+        </div>
+        <div style={{ position: 'absolute', top: 10, right: 10, padding: '3px 8px', borderRadius: 6, background: 'rgba(15,23,42,0.85)', border: '1px solid rgba(255,255,255,0.1)', fontSize: 10, color: '#94a3b8' }}>
+          {current + 1} / {total}
+        </div>
+
+        {/* Boutons navigation (prev/next) — visibles au hover */}
+        {total > 1 && (
+          <>
+            <button
+              onClick={(e) => { e.stopPropagation(); prev(); }}
+              style={{
+                position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)',
+                width: 32, height: 32, borderRadius: '50%',
+                background: 'rgba(15,23,42,0.85)', border: '1px solid rgba(255,255,255,0.15)',
+                color: '#f1f5f9', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 16, fontWeight: 700, transition: 'background 0.15s',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(59,130,246,0.8)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(15,23,42,0.85)'; }}
+            >‹</button>
+            <button
+              onClick={(e) => { e.stopPropagation(); next(); }}
+              style={{
+                position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+                width: 32, height: 32, borderRadius: '50%',
+                background: 'rgba(15,23,42,0.85)', border: '1px solid rgba(255,255,255,0.15)',
+                color: '#f1f5f9', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 16, fontWeight: 700, transition: 'background 0.15s',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(59,130,246,0.8)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(15,23,42,0.85)'; }}
+            >›</button>
+          </>
+        )}
+
+        {/* Icône plein écran */}
+        <div style={{ position: 'absolute', bottom: 10, right: 10, width: 28, height: 28, borderRadius: 6, background: 'rgba(15,23,42,0.85)', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>⛶</div>
+      </div>
+
+      {/* Infos serveur */}
+      <div style={{ padding: '12px 14px 8px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#f1f5f9' }}>{srv.server_nom}</div>
+            <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{srv.server_ip}</div>
+          </div>
+          <div style={{ fontSize: 10, color: '#475569', textAlign: 'right', lineHeight: 1.5 }}>
+            <div style={{ color: '#94a3b8' }}>{new Date(snap.timestamp).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
+            <div>{formatDistanceToNow(new Date(snap.timestamp), { addSuffix: true, locale: fr })}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Miniatures (strip) */}
+      {total > 1 && (
+        <div style={{ display: 'flex', gap: 4, padding: '0 14px 12px', overflowX: 'auto' }}>
+          {captures.slice(0, 12).map((cap, i) => (
+            <button
+              key={cap.id}
+              onClick={() => setCurrent(i)}
+              style={{
+                flexShrink: 0,
+                width: 36, height: 26,
+                borderRadius: 4,
+                border: i === current ? '2px solid #3b82f6' : '2px solid transparent',
+                overflow: 'hidden', cursor: 'pointer', padding: 0,
+                opacity: i === current ? 1 : 0.5,
+                transition: 'opacity 0.15s, border-color 0.15s',
+              }}
+            >
+              <img src={cap.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Lightbox plein écran
+// ─────────────────────────────────────────────────────────────
+function GalleryLightbox({
+  srv,
+  onClose,
+}: {
+  srv: { server_id: number; server_nom: string; server_statut: string; server_ip: string; captures: { id: number; image: string; timestamp: string }[]; initialIndex?: number };
+  onClose: () => void;
+}) {
+  const [current, setCurrent] = useState(srv.initialIndex ?? 0);
+  const captures = srv.captures;
+  const total = captures.length;
+  const snap = captures[current];
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') setCurrent((c) => (c - 1 + total) % total);
+      if (e.key === 'ArrowRight') setCurrent((c) => (c + 1) % total);
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [total, onClose]);
+
+  if (!snap) return null;
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 2000,
+        background: 'rgba(0,0,0,0.92)', backdropFilter: 'blur(8px)',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      }}
+      onClick={onClose}
+    >
+      {/* Header */}
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'linear-gradient(to bottom, rgba(0,0,0,0.7), transparent)' }} onClick={e => e.stopPropagation()}>
+        <div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9' }}>
+            {srv.server_nom}
+            <span style={{ marginLeft: 10, fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 999, background: srv.server_statut === 'actif' ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)', color: srv.server_statut === 'actif' ? '#34d399' : '#f87171' }}>
+              {srv.server_statut === 'actif' ? '● EN LIGNE' : '● HORS LIGNE'}
+            </span>
+          </div>
+          <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+            Capture {current + 1}/{total} · {new Date(snap.timestamp).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          </div>
+        </div>
+        <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', color: '#f1f5f9', width: 36, height: 36, borderRadius: 8, fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+      </div>
+
+      {/* Image principale */}
+      <div style={{ position: 'relative', maxWidth: '80vw', maxHeight: '70vh', display: 'flex', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
+        {total > 1 && (
+          <button onClick={() => setCurrent((c) => (c - 1 + total) % total)} style={{ position: 'absolute', left: -56, width: 44, height: 44, borderRadius: '50%', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#f1f5f9', fontSize: 22, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
+        )}
+        <img
+          src={snap.image}
+          alt={`${srv.server_nom} #${current + 1}`}
+          style={{ maxWidth: '80vw', maxHeight: '70vh', objectFit: 'contain', borderRadius: 12, boxShadow: '0 20px 60px rgba(0,0,0,0.8)', display: 'block' }}
+        />
+        {total > 1 && (
+          <button onClick={() => setCurrent((c) => (c + 1) % total)} style={{ position: 'absolute', right: -56, width: 44, height: 44, borderRadius: '50%', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#f1f5f9', fontSize: 22, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
+        )}
+      </div>
+
+      {/* Strip miniatures en bas */}
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '16px 24px', background: 'linear-gradient(to top, rgba(0,0,0,0.8), transparent)', display: 'flex', justifyContent: 'center', gap: 6 }} onClick={e => e.stopPropagation()}>
+        {captures.map((cap, i) => (
+          <button
+            key={cap.id}
+            onClick={() => setCurrent(i)}
+            style={{
+              flexShrink: 0, width: 52, height: 36, borderRadius: 6, overflow: 'hidden',
+              border: i === current ? '2px solid #3b82f6' : '2px solid rgba(255,255,255,0.1)',
+              cursor: 'pointer', padding: 0,
+              opacity: i === current ? 1 : 0.45,
+              transition: 'opacity 0.15s, border-color 0.15s',
+              boxShadow: i === current ? '0 0 0 2px rgba(59,130,246,0.4)' : 'none',
+            }}
+          >
+            <img src={cap.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+

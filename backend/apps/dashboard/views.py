@@ -2,7 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from apps.racks.models import Rack
-from apps.servers.models import Server, ServerMetric
+from apps.servers.models import Server, ServerMetric, ServerSnapshot
 from apps.servers.views import check_server_heartbeats
 from apps.software.models import Software
 from apps.webapps.models import WebApplication
@@ -44,6 +44,7 @@ class DashboardStatsView(APIView):
         for e in EventLog.objects.order_by('-created_at')[:10]:
             events_data.append({
                 'id': e.id,
+                'category': e.category,
                 'action': e.action,
                 'details': e.details or '',
                 'utilisateur': e.user.nom_complet if e.user else 'Système',
@@ -80,6 +81,27 @@ class DashboardStatsView(APIView):
             'disk': round(item['disk'], 1)
         } for item in history_query]
 
+        # Galerie de Surveillance — 12 dernières captures par serveur
+        galerie = []
+        servers_with_snaps = Server.objects.prefetch_related('snapshots').order_by('nom')
+        for srv in servers_with_snaps:
+            snaps = list(srv.snapshots.all()[:12])  # déjà triés -timestamp
+            if snaps:
+                galerie.append({
+                    'server_id': srv.id,
+                    'server_nom': srv.nom,
+                    'server_statut': srv.statut,
+                    'server_ip': srv.adresse_ip,
+                    'captures': [
+                        {
+                            'id': s.id,
+                            'image': request.build_absolute_uri(s.image.url) if s.image else None,
+                            'timestamp': s.timestamp.isoformat(),
+                        }
+                        for s in snaps if s.image
+                    ],
+                })
+
         return Response({
             'serveurs': {
                 'total': total_servers,
@@ -106,5 +128,25 @@ class DashboardStatsView(APIView):
             'alertes': [],
             'evenements_recents': events_data,
             'historique_24h': history_data,
+            'galerie': galerie,
             'timestamp': now.isoformat(),
         })
+
+from rest_framework import viewsets
+from .serializers import EventLogSerializer
+
+class EventLogViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = EventLog.objects.select_related('user').all()
+    serializer_class = EventLogSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        category = self.request.query_params.get('category')
+        search = self.request.query_params.get('search')
+        if category:
+            qs = qs.filter(category=category)
+        if search:
+            qs = qs.filter(details__icontains=search) | qs.filter(action__icontains=search)
+        return qs
+

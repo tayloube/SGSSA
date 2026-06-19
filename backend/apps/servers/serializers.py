@@ -15,6 +15,7 @@ class ServerSerializer(serializers.ModelSerializer):
     rack_nom = serializers.CharField(source='rack.nom', read_only=True)
     derniere_metrique = serializers.SerializerMethodField()
     dernier_snapshot = serializers.SerializerMethodField()
+    snapshots = serializers.SerializerMethodField()
     
     class Meta:
         model = Server
@@ -31,3 +32,7 @@ class ServerSerializer(serializers.ModelSerializer):
         if latest:
             return ServerSnapshotSerializer(latest).data
         return None
+
+    def get_snapshots(self, obj):
+        # Expose toutes les captures associées au serveur (triées par défaut du plus récent au plus ancien)
+        return ServerSnapshotSerializer(obj.snapshots.all(), many=True).data

@@ -1,0 +1,15 @@
+# Configuration Pyrefly pour SGSSA
+python-interpreter-path = "c:/Users/hpi7/Desktop/SGSSA/backend/venv/Scripts/python.exe"
+
+[project]
+search-paths = [
+    "c:/Users/hpi7/Desktop/SGSSA/backend"
+]
+search_paths = [
+    "c:/Users/hpi7/Desktop/SGSSA/backend"
+]
+
+[errors]
+# Supprime les erreurs de modules manquants (stubs Django, channels, etc.)
+missing-import = "ignore"
+missing-attribute = "ignore"

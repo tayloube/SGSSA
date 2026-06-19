@@ -180,8 +180,7 @@ export const certificatesAPI = {
 // ─────────────────────────────────────────────────────────────
 export const dashboardAPI = {
   stats: () => api.get<DashboardStats>('/dashboard/stats/').then(r => r.data),
-  logs:  (params?: { limit?: number; action?: string }) =>
-    api.get<{ count: number; evenements: EventLog[] }>('/dashboard/logs/', { params }).then(r => r.data),
+  activities: (params?: Record<string, unknown>) => api.get<PaginatedResponse<EventLog>>('/activities/', { params }).then(r => r.data),
 };
 
 export default api;

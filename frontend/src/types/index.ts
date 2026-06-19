@@ -182,6 +182,7 @@ export interface DashboardStats {
   }>;
   evenements_recents: Array<{
     id: number;
+    category: string;
     action: string;
     details: string;
     utilisateur: string;
@@ -193,6 +194,17 @@ export interface DashboardStats {
     ram: number;
     disk: number;
   }[];
+  galerie: Array<{
+    server_id: number;
+    server_nom: string;
+    server_statut: string;
+    server_ip: string;
+    captures: Array<{
+      id: number;
+      image: string;
+      timestamp: string;
+    }>;
+  }>;
   timestamp: string;
 }
 
@@ -205,10 +217,12 @@ export interface PaginatedResponse<T> {
 
 export interface EventLog {
   id: number;
+  category: 'SERVER' | 'SSL' | 'SOFTWARE' | 'LOGIN' | 'OTHER';
   action: string;
   details: string;
   utilisateur: string;
   utilisateur_email?: string;
-  ip?: string;
+  ip_address?: string;
   horodatage: string;
+  created_at: string;
 }
