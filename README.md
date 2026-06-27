@@ -61,7 +61,7 @@ python sgssa_agent.py
 ```
 
 ## 📊 Documentation
-Le rapport complet de projet est disponible ici : [docs/RAPPORT_PROJET_SGSSA.md](docs/RAPPORT_PROJET_SGSSA.md)
+Le rapport complet de projet est disponible ici : [docs/PFE Ahmed Taleb Tolba.docx](docs/PFE Ahmed Taleb Tolba.docx)
 
 ---
 **Développé par Ahmed Taleb Tolba**
