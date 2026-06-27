@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { certificatesAPI, webappsAPI } from '@/lib/api';
 import type { SSLCertificate, WebApplication } from '@/types';
 import toast from 'react-hot-toast';
-import { Shield, Plus, Search, AlertTriangle, CheckCircle, XCircle, Clock, Edit2, Trash2, RefreshCw } from 'lucide-react';
+import { Shield, Plus, Search, AlertTriangle, CheckCircle, XCircle, Clock, Edit2, Trash2, RefreshCw, Lock, Unlock } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -28,11 +28,35 @@ export default function CertificatesPage() {
 
   const fetchCerts = useCallback(async () => {
     try {
+      setLoading(true);
       const params: Record<string, string> = {};
       if (filterStatut) params.statut = filterStatut;
       if (search) params.search = search;
       const data = await certificatesAPI.list(params);
-      setCerts(data.results);
+      
+      const mapped = (data.results || []).map((c: any) => {
+        const days = c.jours_restants !== undefined ? c.jours_restants : 0;
+        const isExpired = days < 0;
+        
+        let alertLevel: 'ok' | 'warning' | 'critical' | 'expired' = 'ok';
+        if (isExpired) {
+          alertLevel = 'expired';
+        } else if (days <= 7) {
+          alertLevel = 'critical';
+        } else if (days <= 30) {
+          alertLevel = 'warning';
+        }
+
+        return {
+          ...c,
+          days_until_expiry: days,
+          is_expired: isExpired,
+          alert_level: alertLevel,
+          application_nom: c.webapp_nom || null,
+          application: c.webapp || null,
+        };
+      });
+      setCerts(mapped);
     } catch { toast.error('Erreur chargement certificats'); }
     finally { setLoading(false); }
   }, [search, filterStatut]);
@@ -123,9 +147,21 @@ export default function CertificatesPage() {
         ) : (
           certs.map(cert => {
             const alertConf = ALERT_CONFIG[cert.alert_level] || ALERT_CONFIG.ok;
+            
+            // Calculate actual range validity percent
+            const emissionTime = new Date(cert.date_emission).getTime();
+            const expirationTime = new Date(cert.date_expiration).getTime();
+            const totalDuration = expirationTime - emissionTime;
+            const elapsed = Date.now() - emissionTime;
+            const remainingPercent = totalDuration > 0
+              ? Math.max(0, Math.min(100, 100 - (elapsed / totalDuration) * 100))
+              : 0;
+
             return (
               <div key={cert.id} className="card" style={{
                 borderColor: cert.alert_level !== 'ok' ? `${alertConf.color}40` : undefined,
+                boxShadow: cert.alert_level !== 'ok' ? `0 4px 20px ${alertConf.color}10` : '0 4px 20px rgba(0, 0, 0, 0.15)',
+                transition: 'all 0.3s ease',
               }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -135,50 +171,58 @@ export default function CertificatesPage() {
                         {alertConf.label}
                       </div>
                     </div>
-                    <div style={{ fontWeight: 600, fontSize: 14, color: '#e2e8f0', wordBreak: 'break-all' }}>
+                    <div style={{ fontWeight: 700, fontSize: 15, color: '#f1f5f9', wordBreak: 'break-all', display: 'flex', alignItems: 'center' }}>
+                      {cert.is_expired ? (
+                        <Unlock size={14} style={{ color: '#ef4444', marginRight: 6, flexShrink: 0 }} />
+                      ) : (
+                        <Lock size={14} style={{ color: '#10b981', marginRight: 6, flexShrink: 0 }} />
+                      )}
                       {cert.domaine}
                     </div>
                     {cert.application_nom && (
-                      <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{cert.application_nom}</div>
+                      <div style={{ fontSize: 12, color: '#3b82f6', marginTop: 4, fontWeight: 500 }}>
+                        🔗 {cert.application_nom}
+                      </div>
                     )}
                   </div>
                   <div style={{ display: 'flex', gap: 4, flexShrink: 0, marginLeft: 8 }}>
-                    <button onClick={() => { setEditCert(cert); setShowModal(true); }} className="btn btn-ghost btn-icon btn-sm"><Edit2 size={12} /></button>
-                    <button onClick={() => handleDelete(cert.id, cert.domaine)} className="btn btn-ghost btn-icon btn-sm" style={{ color: '#ef4444' }}><Trash2 size={12} /></button>
+                    <button onClick={() => { setEditCert(cert); setShowModal(true); }} className="btn btn-ghost btn-icon btn-sm" title="Modifier"><Edit2 size={12} /></button>
+                    <button onClick={() => handleDelete(cert.id, cert.domaine)} className="btn btn-ghost btn-icon btn-sm" style={{ color: '#ef4444' }} title="Supprimer"><Trash2 size={12} /></button>
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 12, borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: 10, paddingBottom: 10 }}>
                   <div>
                     <div style={{ color: '#64748b', marginBottom: 2 }}>Émetteur</div>
-                    <div style={{ color: '#94a3b8' }}>{cert.emetteur || '—'}</div>
+                    <div style={{ color: '#94a3b8', fontWeight: 500 }}>{cert.emetteur || '—'}</div>
                   </div>
                   <div>
                     <div style={{ color: '#64748b', marginBottom: 2 }}>Algorithme</div>
-                    <div style={{ color: '#94a3b8' }}>{cert.algorithme || '—'}</div>
+                    <div style={{ color: '#94a3b8', fontWeight: 500 }}>{cert.algorithme || '—'}</div>
                   </div>
                   <div>
                     <div style={{ color: '#64748b', marginBottom: 2 }}>Émis le</div>
-                    <div style={{ color: '#94a3b8' }}>{cert.date_emission}</div>
+                    <div style={{ color: '#94a3b8', fontWeight: 500 }}>{cert.date_emission}</div>
                   </div>
                   <div>
                     <div style={{ color: '#64748b', marginBottom: 2 }}>Expire le</div>
-                    <div style={{ color: alertConf.color, fontWeight: 500 }}>{cert.date_expiration}</div>
+                    <div style={{ color: alertConf.color, fontWeight: 600 }}>{cert.date_expiration}</div>
                   </div>
                 </div>
 
                 {/* Barre de progression expiration */}
-                <div style={{ marginTop: 12 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#64748b', marginBottom: 4 }}>
+                <div style={{ marginTop: 8, borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#64748b', marginBottom: 6 }}>
                     <span>Validité restante</span>
-                    <span style={{ color: alertConf.color, fontWeight: 500 }}>
-                      {cert.is_expired ? 'Expiré' : `${cert.days_until_expiry} jours`}
+                    <span style={{ color: alertConf.color, fontWeight: 600 }}>
+                      {cert.is_expired ? 'Expiré' : `${cert.days_until_expiry} jours (${Math.round(remainingPercent)}%)`}
                     </span>
                   </div>
-                  <div className="metric-bar">
+                  <div className="metric-bar" style={{ background: 'rgba(255,255,255,0.04)' }}>
                     <div className="metric-bar-fill" style={{
-                      width: cert.is_expired ? '100%' : `${Math.min(100, Math.max(0, (cert.days_until_expiry / 365) * 100))}%`,
+                      width: `${remainingPercent}%`,
                       background: alertConf.color,
+                      boxShadow: `0 0 8px ${alertConf.color}40`,
                     }} />
                   </div>
                 </div>
@@ -219,11 +263,23 @@ function CertModal({ cert, apps, onClose, onSaved }: {
     e.preventDefault();
     setSaving(true);
     try {
+      // Map frontend form properties to Django database columns
+      const payload = {
+        domaine: form.domaine,
+        emetteur: form.emetteur,
+        algorithme: form.algorithme,
+        date_emission: form.date_emission,
+        date_expiration: form.date_expiration,
+        statut: form.statut,
+        webapp: form.application ? parseInt(form.application) : null,
+        notes: form.notes,
+      };
+
       if (cert) {
-        await certificatesAPI.update(cert.id, form as Partial<SSLCertificate>);
+        await certificatesAPI.update(cert.id, payload as any);
         toast.success('Certificat modifié');
       } else {
-        await certificatesAPI.create(form as Partial<SSLCertificate>);
+        await certificatesAPI.create(payload as any);
         toast.success('Certificat créé');
       }
       onSaved();

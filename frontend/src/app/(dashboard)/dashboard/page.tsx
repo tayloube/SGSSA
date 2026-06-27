@@ -274,8 +274,8 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Cartes statistiques + Dernière activité — même grille */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16, marginBottom: 24 }}>
+      {/* Cartes statistiques */}
+      <div className="dashboard-stats-grid">
         <Link href="/servers" style={{ textDecoration: 'none' }}>
           <StatCard
             icon={<Server size={22} />}
@@ -335,115 +335,98 @@ export default function DashboardPage() {
           value={`${stats.serveurs.metriques_moy.cpu}%`}
           sub={`RAM: ${stats.serveurs.metriques_moy.ram}% · Disk: ${stats.serveurs.metriques_moy.disk}%`}
         />
-        {/* Dernière activité — même ligne, large */}
-        <Link href="/activities" style={{ textDecoration: 'none', gridColumn: 'span 4', minWidth: 0 }}>
-          <div className="stat-card stat-card-clickable" style={{
-            display: 'grid',
-            gridTemplateColumns: 'auto 1fr auto',
-            alignItems: 'center',
-            gap: 20,
-            padding: '16px 20px',
-            height: '100%',
-            boxSizing: 'border-box',
-          }}>
-            <div className="stat-icon" style={{ background: 'rgba(249,115,22,0.15)', color: '#f97316', width: 44, height: 44, flexShrink: 0 }}>
-              <Activity size={20} />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
-              <div style={{ fontSize: 10, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 1 }}>
-                Dernière activité
+      </div>
+
+      {/* Grille principale : Historique (2/3) + Dernière activité (1/3) */}
+      <div className="dashboard-main-grid">
+        {/* Galerie de Surveillance */}
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0 }}>
+          <div className="card-header" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Wifi size={16} style={{ color: '#10b981' }} />
+              <div>
+                <span style={{ fontWeight: 700, fontSize: 15, display: 'block' }}>Galerie de Surveillance</span>
+                <span style={{ fontSize: 11, color: '#64748b' }}>
+                  {stats.galerie && stats.galerie.length > 0
+                    ? `${stats.galerie.length} serveur${stats.galerie.length > 1 ? 's' : ''} sous surveillance`
+                    : 'Aucun serveur sous surveillance'}
+                </span>
               </div>
-              {stats.evenements_recents.length === 0 ? (
-                <div style={{ fontSize: 12, color: '#475569' }}>Aucune activité enregistrée</div>
-              ) : (
-                stats.evenements_recents.slice(0, 3).map((e: any, i: number) => {
+            </div>
+            <Link href="/servers" className="btn btn-ghost btn-sm" style={{ fontSize: 11 }}>
+              Gérer les serveurs
+            </Link>
+          </div>
+
+          <div style={{ flex: 1, overflowY: 'auto', padding: '12px 0 0' }}>
+            {!stats.galerie || stats.galerie.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '48px 0', color: '#475569' }}>
+                <Wifi size={36} style={{ opacity: 0.2, marginBottom: 12 }} />
+                <div style={{ fontSize: 14, fontWeight: 500, color: '#64748b' }}>Aucune capture disponible</div>
+                <div style={{ fontSize: 12, color: '#475569', marginTop: 4 }}>L'agent enverra sa première photo dans quelques minutes</div>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+                {stats.galerie.map((srv) => (
+                  <ServerGalleryCard
+                    key={srv.server_id}
+                    srv={srv}
+                    onOpenLightbox={(srv, idx) => setHistoryModalServer({ ...srv, initialIndex: idx })}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Dernière activité */}
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0 }}>
+          <div className="card-header" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <Activity size={20} style={{ color: '#f97316' }} />
+              <div>
+                <span style={{ fontWeight: 700, fontSize: 15, display: 'block' }}>Dernière activité</span>
+                <span style={{ fontSize: 11, color: '#64748b' }}>Événements récents</span>
+              </div>
+            </div>
+            <Link href="/activities" className="btn btn-ghost btn-sm" style={{ padding: '4px 8px', fontSize: 11, borderColor: 'rgba(249,115,22,0.3)', color: '#f97316' }}>
+              Voir tout →
+            </Link>
+          </div>
+
+          <div style={{ flex: 1, overflowY: 'auto', padding: '12px 0 0' }}>
+            {stats.evenements_recents.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '32px 0', color: '#475569', fontSize: 13 }}>
+                Aucune activité enregistrée
+              </div>
+            ) : (
+              <div className="timeline-container">
+                <div className="timeline-line" />
+                {stats.evenements_recents.slice(0, 5).map((e: any) => {
                   const catColors: Record<string, string> = {
                     SERVER: '#3b82f6', SSL: '#10b981', SOFTWARE: '#06b6d4', LOGIN: '#8b5cf6', OTHER: '#64748b'
                   };
                   const catColor = catColors[e.category || 'OTHER'] || '#64748b';
                   return (
-                    <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 8, opacity: i === 0 ? 1 : i === 1 ? 0.6 : 0.35 }}>
-                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: catColor, flexShrink: 0 }} />
-                      <span style={{ fontSize: 12, color: '#cbd5e1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                        <strong style={{ color: '#94a3b8', fontWeight: 600 }}>{e.utilisateur || 'Système'}</strong>
-                        {' — '}{e.details || e.action}
-                      </span>
-                      <span style={{ fontSize: 10, color: '#475569', flexShrink: 0 }}>
-                        {formatDistanceToNow(new Date(e.horodatage), { addSuffix: true, locale: fr })}
-                      </span>
+                    <div key={e.id} className="timeline-item">
+                      <div className="timeline-dot" style={{ borderColor: catColor, backgroundColor: catColor, boxShadow: `0 0 0 2px ${catColor}20` }} />
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: '#f1f5f9' }}>
+                          {e.utilisateur || 'Système'}
+                        </span>
+                        <span style={{ fontSize: 10, color: '#475569', whiteSpace: 'nowrap' }}>
+                          {formatDistanceToNow(new Date(e.horodatage), { addSuffix: true, locale: fr })}
+                        </span>
+                      </div>
+                      <p style={{ fontSize: 11, color: '#94a3b8', margin: 0, lineHeight: 1.4 }}>
+                        {e.details || e.action}
+                      </p>
                     </div>
                   );
-                })
-              )}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#f97316', fontWeight: 600, flexShrink: 0, opacity: 0.8 }}>
-              Voir tout <span style={{ fontSize: 14 }}>→</span>
-            </div>
+                })}
+              </div>
+            )}
           </div>
-        </Link>
-      </div>
-
-      {/* Graphique d'historique 24h Isolé */}
-      <div className="card" style={{ marginBottom: 24 }}>
-        <div className="card-header" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <TrendingUp size={20} style={{ color: '#3b82f6' }} />
-            <div>
-              <span style={{ fontWeight: 700, fontSize: 15, display: 'block' }}>Historique des ressources (24h)</span>
-              <span style={{ fontSize: 11, color: '#64748b' }}>Analyse isolée par serveur ou par rack</span>
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <select 
-              className="btn btn-ghost btn-sm"
-              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}
-              value={`${historyScope.type}-${historyScope.id || ''}`}
-              onChange={(e) => {
-                const [type, id] = e.target.value.split('-');
-                setHistoryScope({ type: type as any, id: id ? parseInt(id) : undefined });
-              }}
-            >
-              <option value="global-">Toute l'infrastructure</option>
-              <optgroup label="Par Rack">
-                {racks.map(r => <option key={`r-${r.id}`} value={`rack-${r.id}`}>{r.nom}</option>)}
-              </optgroup>
-              <optgroup label="Par Serveur">
-                {serversList.map(s => <option key={`s-${s.id}`} value={`server-${s.id}`}>{s.nom}</option>)}
-              </optgroup>
-            </select>
-          </div>
-        </div>
-        
-        <div style={{ padding: '24px 0', opacity: historyLoading ? 0.5 : 1, transition: 'opacity 0.2s', position: 'relative' }}>
-          {historyLoading && (
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
-              <RefreshCw className="animate-spin" size={24} style={{ color: '#3b82f6' }} />
-            </div>
-          )}
-          <ResponsiveContainer width="100%" height={300}>
-            <AreaChart data={historyData}>
-              <defs>
-                <linearGradient id="colorCpu" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                </linearGradient>
-                <linearGradient id="colorRam" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-              <XAxis dataKey="time" stroke="#475569" fontSize={11} tickLine={false} axisLine={false} />
-              <YAxis stroke="#475569" fontSize={11} tickLine={false} axisLine={false} unit="%" />
-              <Tooltip 
-                contentStyle={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, boxShadow: '0 10px 15px -3px rgba(0,0,0,0.5)' }}
-                itemStyle={{ fontSize: 12 }}
-              />
-              <Area type="monotone" dataKey="cpu" name="CPU" stroke="#3b82f6" fillOpacity={1} fill="url(#colorCpu)" strokeWidth={2} />
-              <Area type="monotone" dataKey="ram" name="RAM" stroke="#6366f1" fillOpacity={1} fill="url(#colorRam)" strokeWidth={2} />
-              <Area type="monotone" dataKey="disk" name="Disque" stroke="#10b981" fillOpacity={0} strokeWidth={2} strokeDasharray="5 5" />
-            </AreaChart>
-          </ResponsiveContainer>
         </div>
       </div>
 
@@ -457,11 +440,11 @@ export default function DashboardPage() {
           </div>
           {serverData.length > 0 ? (
             <ResponsiveContainer width="100%" height={200}>
-              <PieChart>
+              <PieChart style={{ outline: 'none' }}>
                 <Pie data={serverData} cx="50%" cy="50%" innerRadius={55} outerRadius={80}
                   paddingAngle={3} dataKey="value">
                   {serverData.map((entry, index) => (
-                    <Cell key={index} fill={entry.color} strokeWidth={0} />
+                    <Cell key={index} fill={entry.color} strokeWidth={0} style={{ outline: 'none' }} />
                   ))}
                 </Pie>
                 <Tooltip formatter={(v, n) => [v, n]}
@@ -491,11 +474,11 @@ export default function DashboardPage() {
           </div>
           {certData.length > 0 ? (
             <ResponsiveContainer width="100%" height={200}>
-              <PieChart>
+              <PieChart style={{ outline: 'none' }}>
                 <Pie data={certData} cx="50%" cy="50%" innerRadius={55} outerRadius={80}
                   paddingAngle={3} dataKey="value">
                   {certData.map((entry, index) => (
-                    <Cell key={index} fill={entry.color} strokeWidth={0} />
+                    <Cell key={index} fill={entry.color} strokeWidth={0} style={{ outline: 'none' }} />
                   ))}
                 </Pie>
                 <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8 }} />
@@ -532,40 +515,68 @@ export default function DashboardPage() {
 
 
 
-      {/* ═══ Galerie de Surveillance ═══ */}
+      {/* ═══ Graphique d'historique 24h ═══ */}
       <div className="card" style={{ marginTop: 24 }}>
-        <div className="card-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Wifi size={16} style={{ color: '#10b981' }} />
-            <span style={{ fontWeight: 700, fontSize: 15 }}>Galerie de Surveillance</span>
-            {stats.galerie && stats.galerie.length > 0 && (
-              <span style={{ fontSize: 11, color: '#64748b', background: 'rgba(255,255,255,0.05)', padding: '2px 8px', borderRadius: 999 }}>
-                {stats.galerie.length} serveur{stats.galerie.length > 1 ? 's' : ''}
-              </span>
-            )}
+        <div className="card-header" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <TrendingUp size={20} style={{ color: '#3b82f6' }} />
+            <div>
+              <span style={{ fontWeight: 700, fontSize: 15, display: 'block' }}>Historique des ressources (24h)</span>
+              <span style={{ fontSize: 11, color: '#64748b' }}>Analyse isolée par serveur ou par rack</span>
+            </div>
           </div>
-          <Link href="/servers" className="btn btn-ghost btn-sm" style={{ fontSize: 11 }}>
-            Gérer les serveurs
-          </Link>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <select 
+              className="btn btn-ghost btn-sm"
+              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer' }}
+              value={`${historyScope.type}-${historyScope.id || ''}`}
+              onChange={(e) => {
+                const [type, id] = e.target.value.split('-');
+                setHistoryScope({ type: type as any, id: id ? parseInt(id) : undefined });
+              }}
+            >
+              <option value="global-">Toute l'infrastructure</option>
+              <optgroup label="Par Rack">
+                {racks.map(r => <option key={`r-${r.id}`} value={`rack-${r.id}`}>{r.nom}</option>)}
+              </optgroup>
+              <optgroup label="Par Serveur">
+                {serversList.map(s => <option key={`s-${s.id}`} value={`server-${s.id}`}>{s.nom}</option>)}
+              </optgroup>
+            </select>
+          </div>
         </div>
-
-        {!stats.galerie || stats.galerie.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '48px 0', color: '#475569' }}>
-            <Wifi size={36} style={{ opacity: 0.2, marginBottom: 12 }} />
-            <div style={{ fontSize: 14, fontWeight: 500, color: '#64748b' }}>Aucune capture disponible</div>
-            <div style={{ fontSize: 12, color: '#475569', marginTop: 4 }}>L'agent enverra sa première photo dans quelques minutes</div>
-          </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 20, padding: '12px 0' }}>
-            {stats.galerie.map((srv) => (
-              <ServerGalleryCard
-                key={srv.server_id}
-                srv={srv}
-                onOpenLightbox={(srv, idx) => setHistoryModalServer({ ...srv, initialIndex: idx })}
+        
+        <div style={{ padding: '24px 0 0 0', opacity: historyLoading ? 0.5 : 1, transition: 'opacity 0.2s', position: 'relative' }}>
+          {historyLoading && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
+              <RefreshCw className="animate-spin" size={24} style={{ color: '#3b82f6' }} />
+            </div>
+          )}
+          <ResponsiveContainer width="100%" height={300}>
+            <AreaChart data={historyData}>
+              <defs>
+                <linearGradient id="colorCpu" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                </linearGradient>
+                <linearGradient id="colorRam" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+              <XAxis dataKey="time" stroke="#475569" fontSize={11} tickLine={false} axisLine={false} />
+              <YAxis stroke="#475569" fontSize={11} tickLine={false} axisLine={false} unit="%" />
+              <Tooltip 
+                contentStyle={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, boxShadow: '0 10px 15px -3px rgba(0,0,0,0.5)' }}
+                itemStyle={{ fontSize: 12 }}
               />
-            ))}
-          </div>
-        )}
+              <Area type="monotone" dataKey="cpu" name="CPU" stroke="#3b82f6" fillOpacity={1} fill="url(#colorCpu)" strokeWidth={2} />
+              <Area type="monotone" dataKey="ram" name="RAM" stroke="#6366f1" fillOpacity={1} fill="url(#colorRam)" strokeWidth={2} />
+              <Area type="monotone" dataKey="disk" name="Disque" stroke="#10b981" fillOpacity={0} strokeWidth={2} strokeDasharray="5 5" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
       {/* ═══ Lightbox plein écran ═══ */}

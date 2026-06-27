@@ -16,7 +16,7 @@ class SSLCertificateViewSet(viewsets.ModelViewSet):
                 user=self.request.user,
                 category='SSL',
                 action='CREATE',
-                details=f"Certificat SSL pour '{cert.nom_domaine}' ajouté (Application: {cert.webapp.nom if cert.webapp else 'N/A'})."
+                details=f"Certificat SSL pour '{cert.domaine}' ajouté (Application: {cert.webapp.nom if cert.webapp else 'N/A'})."
             )
         except Exception:
             pass
@@ -29,13 +29,13 @@ class SSLCertificateViewSet(viewsets.ModelViewSet):
                 user=self.request.user,
                 category='SSL',
                 action='UPDATE',
-                details=f"Certificat SSL pour '{cert.nom_domaine}' mis à jour."
+                details=f"Certificat SSL pour '{cert.domaine}' mis à jour."
             )
         except Exception:
             pass
 
     def perform_destroy(self, instance):
-        domain = instance.nom_domaine
+        domain = instance.domaine
         instance.delete()
         try:
             from apps.dashboard.models import EventLog
