@@ -61,7 +61,7 @@ python sgssa_agent.py
 ```
 
 ## 📊 Documentation
-Le rapport complet de projet est disponible ici : [https://github.com/tayloube/SGSSA/blob/master/docs/rapport.md](docs/rapport.md)
+Le rapport complet de projet est disponible ici : [/docs/rapport.md](docs/rapport.md)
 
 ---
 **Développé par Ahmed Taleb Tolba**
